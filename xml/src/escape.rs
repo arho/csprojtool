@@ -14,9 +14,9 @@ impl Value {
             // '>'  => Value::Str("&gt;"),
             '"'  => Value::Str("&quot;"),
             // '\'' => Value::Str("&apos;"),
-            // '&'  => Value::Str("&amp;"),
-            // '\n' => Value::Str("&#xA;"),
-            // '\r' => Value::Str("&#xD;"),
+            '&'  => Value::Str("&amp;"),
+            '\n' => Value::Str("&#xA;"),
+            '\r' => Value::Str("&#xD;"),
             _    => Value::Char(c)
         }
     }
