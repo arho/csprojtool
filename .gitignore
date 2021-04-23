@@ -1,0 +1,7 @@
+/target/
+*.dot
+*.svg
+*.json
+*.gif
+*.jpg
+*.png

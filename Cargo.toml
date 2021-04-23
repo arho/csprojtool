@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "csprojtool",
+    "xml",
+]
+
+[patch.crates-io]
+xml-rs = { path = 'xml' }
