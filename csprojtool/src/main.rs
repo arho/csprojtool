@@ -1,5 +1,8 @@
 mod cli;
 mod path_extensions;
+mod post_migration_cleanup;
+
+pub use post_migration_cleanup::*;
 
 use path_extensions::*;
 use serde::{Deserialize, Serialize};
@@ -116,147 +119,6 @@ fn list_projects(search_path: &Path, glob_matcher: &globset::GlobMatcher) {
     }
 }
 
-fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMatcher) {
-    // TODO(mickvangelderen): This is inefficient, we're parsing the projects twice.
-    let projects = parse_projects(search_path, glob_matcher);
-
-    for project_path in projects.keys() {
-        let project_dir = project_path
-            .parent()
-            .expect("Failed to compute project directory path!");
-
-        // let rel_project_path = path_extensions::relative_path(search_path, project_path.as_path());
-
-        let mut reader = std::io::BufReader::new(std::fs::File::open(&project_path).unwrap());
-
-        // Get rid of UTF-8 BOM if present.
-        let bytes = std::io::BufRead::fill_buf(&mut reader).unwrap();
-        let mut consume_count = 0;
-        if &bytes[0..2] == "\u{FEFF}".as_bytes() {
-            consume_count = 2;
-        };
-        // What the hell http://www.herongyang.com/Unicode/Notepad-Byte-Order-Mark-BOM-FEFF-EFBBBF.html
-        if &bytes[0..3] == [0xEF, 0xBB, 0xBF] {
-            consume_count = 3;
-        };
-        std::io::BufRead::consume(&mut reader, consume_count);
-
-        let mut root = xmltree::Element::parse(&mut reader).unwrap();
-
-        drop(reader);
-
-        fn should_delete_element(element: &xmltree::Element) -> bool {
-            match element.name.as_str() {
-                "GenerateAssemblyInfo"
-                | "Product"
-                | "AssemblyTitle"
-                | "Description"
-                | "ProductVersion"
-                | "Copyright"
-                | "Company"
-                | "NoWarn"
-                | "TreatWarningsAsErrors"
-                | "WarningsAsErrors"
-                | "WarningLevel"
-                | "DebugSymbols"
-                | "DebugType"
-                | "Optimize"
-                | "OutputPath"
-                | "DefineConstants"
-                | "CodeAnalysisIgnoreBuiltInRuleSets"
-                | "CodeAnalysisIgnoreBuiltInRules"
-                | "CodeAnalysisFailOnMissingRules"
-                | "AutoGenerateBindingRedirects"
-                | "CodeAnalysisRuleSet"
-                | "DefineDebug"
-                | "DefineTrace"
-                | "ErrorReport" => true,
-                "PlatformTarget" => {
-                    if let Some(v) = element.get_text() {
-                        v.to_lowercase() == "anycpu"
-                    } else {
-                        false
-                    }
-                }
-                "Compile" => {
-                    if let Some(v) = element.attributes.get("Include") {
-                        v.ends_with("SolutionInfo.cs")
-                    } else {
-                        false
-                    }
-                }
-                "Import" => {
-                    if let Some(v) = element.attributes.get("Project") {
-                        v.ends_with("Microsoft.CSharp.Targets")
-                    } else {
-                        false
-                    }
-                }
-                _ => false,
-            }
-        }
-
-        fn should_delete_element_pass_2(element: &xmltree::Element) -> bool {
-            match element.name.as_str() {
-                "PropertyGroup" | "ItemGroup" => element.children.iter().all(|node| match node {
-                    xmltree::XMLNode::Text(text) => text.chars().all(|c| c.is_whitespace()),
-                    _ => false,
-                }),
-                _ => false,
-            }
-        }
-
-        fn omit_silly_elements<F>(element: &mut xmltree::Element, should_delete: F)
-        where
-            F: Fn(&xmltree::Element) -> bool + Copy,
-        {
-            element.children.retain(|node| match node {
-                xmltree::XMLNode::Element(element) => !should_delete(element),
-                _ => true,
-            });
-
-            element.children.iter_mut().for_each(|node| match node {
-                xmltree::XMLNode::Element(element) => omit_silly_elements(element, should_delete),
-                _ => {}
-            });
-        }
-
-        omit_silly_elements(&mut root, should_delete_element);
-        omit_silly_elements(&mut root, should_delete_element_pass_2);
-
-        let mut writer =
-            std::io::BufWriter::new(tempfile::NamedTempFile::new_in(project_dir).unwrap());
-
-        root.write_with_config(
-            &mut writer,
-            xmltree::EmitterConfig {
-                perform_escaping: false,
-                perform_indent: true,
-                write_document_declaration: false,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        writer.into_inner().unwrap().persist(&project_path).unwrap();
-
-        // fn count_project_guids(node: &xmltree::XMLNode) -> usize {
-        //     match node {
-        //         xmltree::XMLNode::Element(element) => {
-        //             (if element.name == "ProjectGuid" {
-        //                 1
-        //             } else {
-        //                 0
-        //             }) + element.children.iter().map(count_project_guids).sum::<usize>()
-        //         },
-        //         _ => 0
-        //     }
-        // }
-        // let project_guid_count = nodes.iter().map(count_project_guids).sum::<usize>();
-        // println!("{}: project_guid_count: {}", rel_project_path.display(), project_guid_count);
-    }
-}
-
 fn dependency_graph(glob: &str, search: &str, dot: Option<&str>, json: Option<&str>) {
     // if we pass a file path, projects should contain that file
     // if we pass a directory path, projects should glob that directory
@@ -362,22 +224,24 @@ fn search_for_projects(glob_pattern: &str) -> HashMap<PathBuf, Option<Result<Pro
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct JsonRoot {
-    projects: Vec<Project>,
+pub struct JsonRoot {
+    pub projects: Vec<Project>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Project {
-    path: PathBuf,
-    is_sdk: bool,
-    is_exe: bool,
-    dependencies: Vec<PathBuf>,
+pub struct Project {
+    pub path: PathBuf,
+    pub is_sdk: bool,
+    pub is_exe: bool,
+    pub dependencies: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
-enum Error {
+pub enum Error {
     Parse(roxmltree::Error),
     XmlTreeError(xmltree::Error),
+    XmlTreeParseError(xmltree::ParseError),
+    PersistError(tempfile::PersistError),
     Io(std::io::Error),
 }
 
@@ -393,6 +257,18 @@ impl From<xmltree::Error> for Error {
     }
 }
 
+impl From<xmltree::ParseError> for Error {
+    fn from(err: xmltree::ParseError) -> Self {
+        Self::XmlTreeParseError(err)
+    }
+}
+
+impl From<tempfile::PersistError> for Error {
+    fn from(err: tempfile::PersistError) -> Self {
+        Self::PersistError(err)
+    }
+}
+
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Self::Io(err)
@@ -405,6 +281,8 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "failed to read project: {}", e),
             Error::Parse(e) => write!(f, "failed to parse project: {}", e),
             Error::XmlTreeError(e) => write!(f, "failed to parse project: {}", e),
+            Error::XmlTreeParseError(e) => write!(f, "failed to parse project: {}", e),
+            Error::PersistError(e) => write!(f, "failed to parse project: {}", e),
         }
     }
 }
@@ -415,6 +293,8 @@ impl std::error::Error for Error {
             Error::Io(ref e) => Some(e),
             Error::Parse(ref e) => Some(e),
             Error::XmlTreeError(ref e) => Some(e),
+            Error::XmlTreeParseError(ref e) => Some(e),
+            Error::PersistError(ref e) => Some(e),
         }
     }
 }
