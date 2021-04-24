@@ -5,27 +5,24 @@ pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMa
     let projects = parse_projects(search_path, glob_matcher);
 
     let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
-    for project_path in projects
-        .into_iter()
-        .filter_map(|(path, project)| {
-            let rel_path = path_extensions::relative_path(cwd.as_path(), path.as_path());
-            match project {
-                Ok(project) => {
-                    if project.is_sdk {
-                        println!("Migrating sdk project {}", rel_path.display());
-                        Some(path)
-                    } else {
-                        println!("Skipping non-sdk project {}", rel_path.display());
-                        None
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Failed to parse {}: {}", rel_path.display(), err);
+    for project_path in projects.into_iter().filter_map(|(path, project)| {
+        let rel_path = path_extensions::relative_path(cwd.as_path(), path.as_path());
+        match project {
+            Ok(project) => {
+                if project.is_sdk {
+                    println!("Migrating sdk project {}", rel_path.display());
+                    Some(path)
+                } else {
+                    println!("Skipping non-sdk project {}", rel_path.display());
                     None
                 }
             }
-        })
-    {
+            Err(err) => {
+                eprintln!("Failed to parse {}: {}", rel_path.display(), err);
+                None
+            }
+        }
+    }) {
         if let Err(e) = post_migration_cleanup_one(project_path.as_path()) {
             panic!("Failed to migrate {}: {}", project_path.display(), e)
         }
@@ -130,6 +127,11 @@ fn process_element(element: &mut xmltree::Element) {
                     | "DefineTrace"
                     | "DocumentationFile" // sdk projects support <GenerateDocumentationFile>true</GenerateDocumentationFile> which can be enabled for all projects through Directory.Build.props
                     | "ErrorReport" => {}
+                    "StartupObject" => {
+                        if !old_child.children.is_empty() {
+                            new_children.push(xmltree::XMLNode::Element(old_child))
+                        }
+                    }
                     "PlatformTarget" => {
                         if let Some(v) = old_child.get_text() {
                             if v.to_lowercase() != "anycpu" {
