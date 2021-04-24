@@ -127,7 +127,7 @@ fn process_element(element: &mut xmltree::Element) {
                     | "DefineTrace"
                     | "DocumentationFile" // sdk projects support <GenerateDocumentationFile>true</GenerateDocumentationFile> which can be enabled for all projects through Directory.Build.props
                     | "ErrorReport" => {}
-                    "StartupObject" => {
+                    "StartupObject" | "PostBuildEvent" => {
                         if !old_child.children.is_empty() {
                             new_children.push(xmltree::XMLNode::Element(old_child))
                         }
