@@ -83,7 +83,7 @@ fn parse_projects(
             let result = read_and_parse_project(project_path.clone());
 
             if let Ok(project) = &result {
-                for project_path in project.dependencies.iter() {
+                for project_path in project.project_references.iter() {
                     if !projects.contains_key(project_path) {
                         projects.insert(project_path.clone(), None);
                         new_todo.push(project_path.clone());
@@ -164,7 +164,7 @@ fn dependency_graph(glob: &str, search: &str, dot: Option<&str>, json: Option<&s
             let project = read_and_parse_project(project_path.clone());
 
             if let Ok(project) = &project {
-                for path in project.dependencies.iter().cloned() {
+                for path in project.project_references.iter().cloned() {
                     projects.entry(path).or_insert(None);
                 }
             }
@@ -181,7 +181,7 @@ fn dependency_graph(glob: &str, search: &str, dot: Option<&str>, json: Option<&s
             let mut project = maybe_project.unwrap();
             if let Ok(project) = project.as_mut() {
                 project.path = relative_path(&search_dir, &project.path);
-                for dependency_path in project.dependencies.iter_mut() {
+                for dependency_path in project.project_references.iter_mut() {
                     *dependency_path = relative_path(&search_dir, dependency_path);
                 }
             }
@@ -233,7 +233,14 @@ pub struct Project {
     pub path: PathBuf,
     pub is_sdk: bool,
     pub is_exe: bool,
-    pub dependencies: Vec<PathBuf>,
+    pub project_references: Vec<PathBuf>,
+    pub package_references: Vec<PackageReference>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageReference {
+    pub name: String,
+    pub version: String,
 }
 
 #[derive(Debug)]
@@ -323,7 +330,7 @@ fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
             matches!(node.text(), Some("Exe") | Some("WinExe"))
         });
 
-    let dependencies = document
+    let project_references = document
         .descendants()
         .filter_map(|node| -> Option<std::io::Result<PathBuf>> {
             if node.tag_name().name() != "ProjectReference" {
@@ -335,11 +342,22 @@ fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
         })
         .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
 
+        let package_references = document.descendants().filter_map(|node| -> Option<PackageReference> {
+            if node.tag_name().name() != "PackageReference" {
+                return None
+            }
+            Some(PackageReference {
+                name: node.attribute("Include")?.to_string(),
+                version: node.attribute("Version")?.to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
     Ok(Project {
         path: project_path,
         is_sdk,
         is_exe,
-        dependencies,
+        project_references,
+        package_references,
     })
 }
 
@@ -372,7 +390,7 @@ fn serialize_dot<W: std::io::Write>(
         .map(|(index, (_, project))| {
             let dependencies = match project {
                 Ok(project) => project
-                    .dependencies
+                    .project_references
                     .iter()
                     .map(|path| *nodes.get(path).unwrap())
                     .collect(),
