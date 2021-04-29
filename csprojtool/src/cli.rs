@@ -33,9 +33,8 @@ pub fn build_cli() -> App<'static, 'static> {
         .help("Sets the file to process or directory to search")
         .index(1)
         .default_value(DEFAULT_SEARCH);
-    
-    let exclude_sdk = &Arg::with_name(ARG_EXCLUDE_SDK)
-        .long("exclude-sdk");
+
+    let exclude_sdk = &Arg::with_name(ARG_EXCLUDE_SDK).long("exclude-sdk");
 
     App::new("csprojtool")
         .version("0.1.0")

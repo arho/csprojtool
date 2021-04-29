@@ -35,7 +35,11 @@ fn main() {
         let glob_matcher = globset::Glob::new(glob_pattern).unwrap().compile_matcher();
         let search_path = matches.value_of(cli::ARG_SEARCH).unwrap();
         let search_path = std::fs::canonicalize(search_path).unwrap();
-        list_projects(search_path.as_path(), &glob_matcher, matches.is_present(cli::ARG_EXCLUDE_SDK));
+        list_projects(
+            search_path.as_path(),
+            &glob_matcher,
+            matches.is_present(cli::ARG_EXCLUDE_SDK),
+        );
     }
 }
 
@@ -111,7 +115,12 @@ fn list_projects(search_path: &Path, glob_matcher: &globset::GlobMatcher, exclud
     let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
     let mut project_paths = projects
         .into_iter()
-        .map(|(path, project)| (path_extensions::relative_path(&cwd, path.as_path()), project.unwrap()))
+        .map(|(path, project)| {
+            (
+                path_extensions::relative_path(&cwd, path.as_path()),
+                project.unwrap(),
+            )
+        })
         .collect::<Vec<_>>();
 
     project_paths.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -348,9 +357,11 @@ fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
         })
         .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
 
-        let package_references = document.descendants().filter_map(|node| -> Option<PackageReference> {
+    let package_references = document
+        .descendants()
+        .filter_map(|node| -> Option<PackageReference> {
             if node.tag_name().name() != "PackageReference" {
-                return None
+                return None;
             }
             Some(PackageReference {
                 name: node.attribute("Include")?.to_string(),

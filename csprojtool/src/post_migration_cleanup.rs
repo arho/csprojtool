@@ -31,7 +31,11 @@ pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMa
             let rel_path = path_extensions::relative_path(cwd.as_path(), app_config_path.as_path());
             println!("Cleaning up app config {}", rel_path.display());
             if let Err(e) = cleanup_app_config(app_config_path.as_path()) {
-                panic!("Failed to clean up app config {}: {}", app_config_path.display(), e);
+                panic!(
+                    "Failed to clean up app config {}: {}",
+                    app_config_path.display(),
+                    e
+                );
             }
         }
 
@@ -41,34 +45,42 @@ pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMa
     }
 }
 
-fn find_app_configs(project_dir: &Path) -> Result<impl Iterator<Item = Result<PathBuf, Error>>, Error> {
-    let glob_matcher = globset::GlobBuilder::new("**/app.config").case_insensitive(true).build().unwrap().compile_matcher();
-    
-    Ok(std::fs::read_dir(project_dir)?.into_iter().filter_map(move |entry| -> Option<Result<PathBuf, Error>> {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(e) => return Some(Err(e.into()))
-        };
+fn find_app_configs(
+    project_dir: &Path,
+) -> Result<impl Iterator<Item = Result<PathBuf, Error>>, Error> {
+    let glob_matcher = globset::GlobBuilder::new("**/app.config")
+        .case_insensitive(true)
+        .build()
+        .unwrap()
+        .compile_matcher();
 
-        let meta = match entry.metadata() {
-            Ok(meta) => meta,
-            Err(e) => return Some(Err(e.into()))
-        };
+    Ok(std::fs::read_dir(project_dir)?.into_iter().filter_map(
+        move |entry| -> Option<Result<PathBuf, Error>> {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => return Some(Err(e.into())),
+            };
 
-        let path = entry.path();
+            let meta = match entry.metadata() {
+                Ok(meta) => meta,
+                Err(e) => return Some(Err(e.into())),
+            };
 
-        if meta.is_file() && glob_matcher.is_match(path.as_path()) {
-            Some(Ok(path))
-        } else {
-            None
-        }
-    }))
+            let path = entry.path();
+
+            if meta.is_file() && glob_matcher.is_match(path.as_path()) {
+                Some(Ok(path))
+            } else {
+                None
+            }
+        },
+    ))
 }
 
 fn strip_bom<R: std::io::BufRead>(reader: &mut R) {
     // Get rid of UTF-8 BOM if present.
     let bytes = std::io::BufRead::fill_buf(reader).unwrap();
-    
+
     let mut consume_count = 0;
     if &bytes[0..2] == "\u{FEFF}".as_bytes() {
         consume_count = 2;
@@ -125,7 +137,8 @@ fn app_config_element_transform(element: &mut xmltree::Element) {
         match old_child {
             xmltree::XMLNode::Element(old_child) => {
                 match old_child.name.as_str() {
-                    "assemblyBinding" => {}
+                    "assemblyBinding" // these should be auto-generated
+                    | "supportedRuntime" => {} // supportedRuntime is messy, just target the right framework. See https://stackoverflow.com/a/21578128/4127458
                     _ => new_children.push(xmltree::XMLNode::Element(old_child)),
                 }
             }
@@ -138,7 +151,7 @@ fn app_config_element_transform(element: &mut xmltree::Element) {
         .into_iter()
         .filter_map(|new_child| match new_child {
             xmltree::XMLNode::Element(element) => match element.name.as_str() {
-                "runtime" => {
+                "runtime" | "startup" => {
                     if all_children_whitespace(&element) {
                         None
                     } else {
