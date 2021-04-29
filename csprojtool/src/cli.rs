@@ -4,6 +4,7 @@ pub const ARG_GLOB: &'static str = "glob";
 pub const ARG_SEARCH: &'static str = "search";
 pub const ARG_DOT: &'static str = "dot";
 pub const ARG_JSON: &'static str = "json";
+pub const ARG_EXCLUDE_SDK: &'static str = "exclude-sdk";
 pub const CMD_DEPENDENCY_GRAPH: &'static str = "dependency-graph";
 pub const CMD_POST_MIGRATION_CLEANUP: &'static str = "post-migration-cleanup";
 pub const CMD_LIST_PROJECTS: &'static str = "list-projects";
@@ -32,6 +33,9 @@ pub fn build_cli() -> App<'static, 'static> {
         .help("Sets the file to process or directory to search")
         .index(1)
         .default_value(DEFAULT_SEARCH);
+    
+    let exclude_sdk = &Arg::with_name(ARG_EXCLUDE_SDK)
+        .long("exclude-sdk");
 
     App::new("csprojtool")
         .version("0.1.0")
@@ -62,6 +66,7 @@ pub fn build_cli() -> App<'static, 'static> {
             clap::SubCommand::with_name(CMD_LIST_PROJECTS)
                 .about("List all projects and their dependencies")
                 .arg(arg_glob)
-                .arg(arg_search),
+                .arg(arg_search)
+                .arg(exclude_sdk),
         ])
 }

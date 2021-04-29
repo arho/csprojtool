@@ -35,7 +35,7 @@ fn main() {
         let glob_matcher = globset::Glob::new(glob_pattern).unwrap().compile_matcher();
         let search_path = matches.value_of(cli::ARG_SEARCH).unwrap();
         let search_path = std::fs::canonicalize(search_path).unwrap();
-        list_projects(search_path.as_path(), &glob_matcher);
+        list_projects(search_path.as_path(), &glob_matcher, matches.is_present(cli::ARG_EXCLUDE_SDK));
     }
 }
 
@@ -105,17 +105,23 @@ fn parse_projects(
     projects.into_iter().map(|(k, v)| (k, v.unwrap())).collect()
 }
 
-fn list_projects(search_path: &Path, glob_matcher: &globset::GlobMatcher) {
+fn list_projects(search_path: &Path, glob_matcher: &globset::GlobMatcher, exclude_sdk: bool) {
     let projects = parse_projects(search_path, glob_matcher);
 
     let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
     let mut project_paths = projects
-        .keys()
-        .map(|project_path| path_extensions::relative_path(&cwd, project_path.as_path()))
+        .into_iter()
+        .map(|(path, project)| (path_extensions::relative_path(&cwd, path.as_path()), project.unwrap()))
         .collect::<Vec<_>>();
-    project_paths.sort();
-    for project_path in project_paths {
-        println!("{}", project_path.display())
+
+    project_paths.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    for (path, project) in project_paths {
+        if exclude_sdk && project.is_sdk {
+            continue;
+        }
+
+        println!("{}", path.display())
     }
 }
 

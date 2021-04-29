@@ -5,6 +5,7 @@ pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMa
     let projects = parse_projects(search_path, glob_matcher);
 
     let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
+
     for project_path in projects.into_iter().filter_map(|(path, project)| {
         let rel_path = path_extensions::relative_path(cwd.as_path(), path.as_path());
         match project {
@@ -23,38 +24,142 @@ pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMa
             }
         }
     }) {
-        if let Err(e) = post_migration_cleanup_one(project_path.as_path()) {
+        let project_dir = project_path.parent().unwrap();
+        let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
+        for app_config_path in find_app_configs(project_dir).unwrap() {
+            let app_config_path = app_config_path.unwrap();
+            let rel_path = path_extensions::relative_path(cwd.as_path(), app_config_path.as_path());
+            println!("Cleaning up app config {}", rel_path.display());
+            if let Err(e) = cleanup_app_config(app_config_path.as_path()) {
+                panic!("Failed to clean up app config {}: {}", app_config_path.display(), e);
+            }
+        }
+
+        if let Err(e) = cleanup_csproj(project_path.as_path()) {
             panic!("Failed to migrate {}: {}", project_path.display(), e)
         }
     }
 }
 
-fn post_migration_cleanup_one(project_path: &Path) -> Result<(), Error> {
-    let project_dir = project_path
-        .parent()
-        .expect("Failed to compute project directory path!");
+fn find_app_configs(project_dir: &Path) -> Result<impl Iterator<Item = Result<PathBuf, Error>>, Error> {
+    let glob_matcher = globset::GlobBuilder::new("**/app.config").case_insensitive(true).build().unwrap().compile_matcher();
+    
+    Ok(std::fs::read_dir(project_dir)?.into_iter().filter_map(move |entry| -> Option<Result<PathBuf, Error>> {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => return Some(Err(e.into()))
+        };
 
-    // let rel_project_path = path_extensions::relative_path(search_path, project_path.as_path());
+        let meta = match entry.metadata() {
+            Ok(meta) => meta,
+            Err(e) => return Some(Err(e.into()))
+        };
 
-    let mut reader = std::io::BufReader::new(std::fs::File::open(&project_path).unwrap());
+        let path = entry.path();
 
+        if meta.is_file() && glob_matcher.is_match(path.as_path()) {
+            Some(Ok(path))
+        } else {
+            None
+        }
+    }))
+}
+
+fn strip_bom<R: std::io::BufRead>(reader: &mut R) {
     // Get rid of UTF-8 BOM if present.
-    let bytes = std::io::BufRead::fill_buf(&mut reader).unwrap();
+    let bytes = std::io::BufRead::fill_buf(reader).unwrap();
+    
     let mut consume_count = 0;
     if &bytes[0..2] == "\u{FEFF}".as_bytes() {
         consume_count = 2;
     };
+
     // What the hell http://www.herongyang.com/Unicode/Notepad-Byte-Order-Mark-BOM-FEFF-EFBBBF.html
     if &bytes[0..3] == [0xEF, 0xBB, 0xBF] {
         consume_count = 3;
     };
-    std::io::BufRead::consume(&mut reader, consume_count);
 
-    let mut root = xmltree::Element::parse(&mut reader)?;
+    std::io::BufRead::consume(reader, consume_count);
+}
 
-    drop(reader);
+fn read_xml_file<P: AsRef<Path>>(path: P) -> Result<xmltree::Element, Error> {
+    let mut reader = std::io::BufReader::new(std::fs::File::open(path.as_ref())?);
+    strip_bom(&mut reader);
+    Ok(xmltree::Element::parse(&mut reader)?)
+}
 
-    process_tree(&mut root, process_element);
+fn cleanup_app_config(path: &Path) -> Result<(), Error> {
+    let project_dir = path.parent().unwrap();
+
+    let mut root = read_xml_file(path)?;
+
+    process_tree(&mut root, app_config_element_transform);
+
+    let mut writer = std::io::BufWriter::new(tempfile::NamedTempFile::new_in(project_dir)?);
+
+    root.write_with_config(
+        &mut writer,
+        xmltree::EmitterConfig {
+            perform_escaping: true,
+            perform_indent: true,
+            write_document_declaration: true,
+            line_separator: "\r\n".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    if all_children_whitespace(&root) {
+        std::fs::remove_file(path)?;
+    } else {
+        writer.into_inner().unwrap().persist(&path)?;
+    }
+
+    Ok(())
+}
+
+fn app_config_element_transform(element: &mut xmltree::Element) {
+    let mut new_children = Vec::with_capacity(element.children.len());
+
+    for old_child in element.children.drain(..) {
+        match old_child {
+            xmltree::XMLNode::Element(old_child) => {
+                match old_child.name.as_str() {
+                    "assemblyBinding" => {}
+                    _ => new_children.push(xmltree::XMLNode::Element(old_child)),
+                }
+            }
+            other => new_children.push(other),
+        }
+    }
+
+    // Omit group elements without children
+    element.children = new_children
+        .into_iter()
+        .filter_map(|new_child| match new_child {
+            xmltree::XMLNode::Element(element) => match element.name.as_str() {
+                "runtime" => {
+                    if all_children_whitespace(&element) {
+                        None
+                    } else {
+                        Some(xmltree::XMLNode::Element(element))
+                    }
+                }
+                _ => Some(xmltree::XMLNode::Element(element)),
+            },
+            other => Some(other),
+        })
+        .collect();
+}
+
+fn cleanup_csproj(project_path: &Path) -> Result<(), Error> {
+    let project_dir = project_path
+        .parent()
+        .expect("Failed to compute project directory path!");
+
+    let mut root = read_xml_file(project_path)?;
+
+    process_tree(&mut root, csproj_element_transform);
 
     let mut writer = std::io::BufWriter::new(tempfile::NamedTempFile::new_in(project_dir)?);
 
@@ -64,6 +169,7 @@ fn post_migration_cleanup_one(project_path: &Path) -> Result<(), Error> {
             perform_escaping: true,
             perform_indent: true,
             write_document_declaration: false,
+            line_separator: "\r\n".into(),
             ..Default::default()
         },
     )
@@ -74,7 +180,7 @@ fn post_migration_cleanup_one(project_path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn process_element(element: &mut xmltree::Element) {
+fn csproj_element_transform(element: &mut xmltree::Element) {
     let mut new_children = Vec::with_capacity(element.children.len());
 
     for old_child in element.children.drain(..) {
@@ -121,7 +227,6 @@ fn process_element(element: &mut xmltree::Element) {
                     | "CodeAnalysisIgnoreBuiltInRuleSets"
                     | "CodeAnalysisIgnoreBuiltInRules"
                     | "CodeAnalysisFailOnMissingRules"
-                    | "AutoGenerateBindingRedirects"
                     | "CodeAnalysisRuleSet"
                     | "DefineDebug"
                     | "DefineTrace"
