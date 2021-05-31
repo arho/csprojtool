@@ -1,8 +1,23 @@
+use crate::csproj::*;
 use crate::*;
 
-pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMatcher) {
+pub struct PostMigrationCleanupOptions {
+    pub search_path: PathBuf,
+    pub glob_matcher: globset::GlobMatcher,
+    pub follow_project_references: bool,
+    pub clean_app_configs: bool,
+}
+
+pub fn post_migration_cleanup(options: &PostMigrationCleanupOptions) {
+    let PostMigrationCleanupOptions {
+        ref search_path,
+        ref glob_matcher,
+        follow_project_references,
+        clean_app_configs,
+    } = *options;
+
     // TODO(mickvangelderen): This is inefficient, we're parsing the projects twice.
-    let projects = parse_projects(search_path, glob_matcher);
+    let projects = parse_projects(search_path, glob_matcher, follow_project_references);
 
     let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
 
@@ -24,21 +39,23 @@ pub fn post_migration_cleanup(search_path: &Path, glob_matcher: &globset::GlobMa
             }
         }
     }) {
-        let project_dir = project_path.parent().unwrap();
-        let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
-        for app_config_path in find_app_configs(project_dir).unwrap() {
-            let app_config_path = app_config_path.unwrap();
-            let rel_path = path_extensions::relative_path(cwd.as_path(), app_config_path.as_path());
-            println!("Cleaning up app config {}", rel_path.display());
-            if let Err(e) = cleanup_app_config(app_config_path.as_path()) {
-                panic!(
-                    "Failed to clean up app config {}: {}",
-                    app_config_path.display(),
-                    e
-                );
+        if clean_app_configs {
+            let project_dir = project_path.parent().unwrap();
+            let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
+            for app_config_path in find_app_configs(project_dir).unwrap() {
+                let app_config_path = app_config_path.unwrap();
+                let rel_path = path_extensions::relative_path(cwd.as_path(), app_config_path.as_path());
+                println!("Cleaning up app config {}", rel_path.display());
+                if let Err(e) = cleanup_app_config(app_config_path.as_path()) {
+                    panic!(
+                        "Failed to clean up app config {}: {}",
+                        app_config_path.display(),
+                        e
+                    );
+                }
             }
         }
-
+        
         if let Err(e) = cleanup_csproj(project_path.as_path()) {
             panic!("Failed to migrate {}: {}", project_path.display(), e)
         }
@@ -75,29 +92,6 @@ fn find_app_configs(
             }
         },
     ))
-}
-
-fn strip_bom<R: std::io::BufRead>(reader: &mut R) {
-    // Get rid of UTF-8 BOM if present.
-    let bytes = std::io::BufRead::fill_buf(reader).unwrap();
-
-    let mut consume_count = 0;
-    if &bytes[0..2] == "\u{FEFF}".as_bytes() {
-        consume_count = 2;
-    };
-
-    // What the hell http://www.herongyang.com/Unicode/Notepad-Byte-Order-Mark-BOM-FEFF-EFBBBF.html
-    if &bytes[0..3] == [0xEF, 0xBB, 0xBF] {
-        consume_count = 3;
-    };
-
-    std::io::BufRead::consume(reader, consume_count);
-}
-
-fn read_xml_file<P: AsRef<Path>>(path: P) -> Result<xmltree::Element, Error> {
-    let mut reader = std::io::BufReader::new(std::fs::File::open(path.as_ref())?);
-    strip_bom(&mut reader);
-    Ok(xmltree::Element::parse(&mut reader)?)
 }
 
 fn cleanup_app_config(path: &Path) -> Result<(), Error> {
