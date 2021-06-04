@@ -30,6 +30,7 @@ pub struct Project {
     pub path: PathBuf,
     pub is_sdk: bool,
     pub is_exe: bool,
+    pub target_frameworks: Vec<String>,
     pub project_references: Vec<PathBuf>,
     pub package_references: Vec<PackageReference>,
 }
@@ -196,6 +197,51 @@ pub fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
             matches!(node.text(), Some("Exe") | Some("WinExe"))
         });
 
+    let target_frameworks = {
+        let target_frameworks_iter = document
+            .descendants()
+            .filter_map(|node| {
+                if node.tag_name().name() == "TargetFrameworks" {
+                    node.text()
+                } else {
+                    None
+                }
+            })
+            .flat_map(|text| text.split(';'))
+            .map(str::to_owned);
+
+        let target_framework_iter = document
+            .descendants()
+            .filter_map(|node| {
+                if node.tag_name().name() == "TargetFramework" {
+                    node.text()
+                } else {
+                    None
+                }
+            })
+            .map(str::to_owned);
+
+        // Old style
+        let target_framework_version_iter = document.descendants().filter_map(|node| {
+            if node.tag_name().name() == "TargetFrameworkVersion" {
+                node.text()
+                    .map(parse_target_framework_version)
+                    .expect("Failed to parse framework version!")
+            } else {
+                None
+            }
+        });
+
+        let mut target_frameworks = target_frameworks_iter
+            .chain(target_framework_iter)
+            .chain(target_framework_version_iter)
+            .collect::<Vec<_>>();
+
+        target_frameworks.sort();
+        target_frameworks.dedup();
+        target_frameworks
+    };
+
     let project_references = document
         .descendants()
         .filter_map(|node| -> Option<std::io::Result<PathBuf>> {
@@ -224,6 +270,7 @@ pub fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
         path: project_path,
         is_sdk,
         is_exe,
+        target_frameworks,
         project_references,
         package_references,
     })
@@ -250,4 +297,35 @@ pub fn read_xml_file<P: AsRef<Path>>(path: P) -> Result<xmltree::Element, Error>
     let mut reader = std::io::BufReader::new(std::fs::File::open(path.as_ref())?);
     strip_bom(&mut reader);
     Ok(xmltree::Element::parse(&mut reader)?)
+}
+
+fn parse_target_framework_version(text: &str) -> Option<String> {
+    lazy_static::lazy_static! {
+        static ref RE: regex::Regex = regex::Regex::new(r"^\s*v(\d)\.(\d)(?:\.(\d))?\s*$").unwrap();
+    }
+    RE.captures(text).map(|c| {
+        format!(
+            "net{}{}{}",
+            &c[1],
+            &c[2],
+            c.get(3).map(|m| m.as_str()).unwrap_or("")
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_target_framework_version;
+
+    #[test]
+    fn parse_target_framework_version_works() {
+        assert_eq!(
+            parse_target_framework_version(" v3.5 "),
+            Some(String::from("net35"))
+        );
+        assert_eq!(
+            parse_target_framework_version("v4.7.1"),
+            Some(String::from("net471"))
+        );
+    }
 }

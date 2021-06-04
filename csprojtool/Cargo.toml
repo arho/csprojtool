@@ -16,3 +16,5 @@ serde = { version = "1.0.125", features = [ "derive" ] }
 serde_json = "1.0.64"
 tempfile = "3.2.0"
 xmltree = { version = "0.10.3", features = [ "attribute-order" ] }
+regex = "1.5.4"
+lazy_static = "1.4.0"

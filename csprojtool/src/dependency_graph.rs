@@ -149,6 +149,11 @@ fn serialize_dot<W: std::io::Write>(
             }
         }
 
+        if let Ok(project) = project {
+            label.push_str("<BR/>");
+            label.push_str(&format!("[{}]", project.target_frameworks.join(", ")));
+        }
+
         writeln!(
             writer,
             "  n{} [label = < {} >, fillcolor = \"{}\", style = filled, shape = \"{}\"]",
@@ -194,22 +199,54 @@ fn serialize_dot<W: std::io::Write>(
     }
 
     for (source, targets) in edges {
+        let sp = projects[source].1.as_ref().ok();
         for target in targets {
+            let tp = projects[target].1.as_ref().ok();
+
             let longest_path = mat[source * N + target] - 1;
-            if longest_path > 1 {
-                writeln!(
-                    writer,
-                    "  n{} -> n{} [color = \"#e2e2e2\"];",
-                    source, target
-                )
-                .unwrap();
+            let color = if !compatible_dependency(sp, tp) {
+                Some("#ff0000")
+            } else if longest_path > 1 {
+                Some("#e2e2e2")
             } else {
-                writeln!(writer, "  n{} -> n{};", source, target).unwrap();
-            }
+                None
+            };
+
+            writeln!(
+                writer,
+                "  n{} -> n{}{};",
+                source,
+                target,
+                color
+                    .map(|color| format!(" [color = \"{}\"]", color))
+                    .unwrap_or(String::default())
+            )
+            .unwrap();
         }
     }
 
     writeln!(writer, "}}")?;
 
     Ok(())
+}
+
+fn compatible_dependency(s: Option<&Project>, t: Option<&Project>) -> bool {
+    if let (Some(s), Some(t)) = (s, t) {
+        s.target_frameworks.iter().all(|sf| {
+            let net3 = sf.starts_with("net3");
+            let net4 = sf.starts_with("net4");
+            if net3 || net4 {
+                true
+            } else {
+                // If we're targetting net standard, net core or net5+ we need our dependency to also target one of those.
+                t.target_frameworks.iter().any(|tf| {
+                    let net3 = tf.starts_with("net3");
+                    let net4 = tf.starts_with("net4");
+                    !net3 && !net4
+                })
+            }
+        })
+    } else {
+        true
+    }
 }

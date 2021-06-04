@@ -44,7 +44,8 @@ pub fn post_migration_cleanup(options: &PostMigrationCleanupOptions) {
             let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
             for app_config_path in find_app_configs(project_dir).unwrap() {
                 let app_config_path = app_config_path.unwrap();
-                let rel_path = path_extensions::relative_path(cwd.as_path(), app_config_path.as_path());
+                let rel_path =
+                    path_extensions::relative_path(cwd.as_path(), app_config_path.as_path());
                 println!("Cleaning up app config {}", rel_path.display());
                 if let Err(e) = cleanup_app_config(app_config_path.as_path()) {
                     panic!(
@@ -55,7 +56,7 @@ pub fn post_migration_cleanup(options: &PostMigrationCleanupOptions) {
                 }
             }
         }
-        
+
         if let Err(e) = cleanup_csproj(project_path.as_path()) {
             panic!("Failed to migrate {}: {}", project_path.display(), e)
         }
