@@ -1,4 +1,5 @@
 use crate::csproj::*;
+use crate::xml_extensions::*;
 use crate::*;
 
 pub struct PostMigrationCleanupOptions {
@@ -96,30 +97,21 @@ fn find_app_configs(
 }
 
 fn cleanup_app_config(path: &Path) -> Result<(), Error> {
-    let project_dir = path.parent().unwrap();
+    let mut should_remove = false;
 
-    let mut root = read_xml_file(path)?;
+    transform_xml_file(path, |mut root| {
+        process_tree(&mut root, app_config_element_transform);
 
-    process_tree(&mut root, app_config_element_transform);
+        if all_children_whitespace(&root) {
+            should_remove = true;
+            None
+        } else {
+            Some(root)
+        }
+    })?;
 
-    let mut writer = std::io::BufWriter::new(tempfile::NamedTempFile::new_in(project_dir)?);
-
-    root.write_with_config(
-        &mut writer,
-        xmltree::EmitterConfig {
-            perform_escaping: true,
-            perform_indent: true,
-            write_document_declaration: true,
-            line_separator: "\r\n".into(),
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    if all_children_whitespace(&root) {
+    if should_remove {
         std::fs::remove_file(path)?;
-    } else {
-        writer.into_inner().unwrap().persist(&path)?;
     }
 
     Ok(())
@@ -161,31 +153,10 @@ fn app_config_element_transform(element: &mut xmltree::Element) {
 }
 
 fn cleanup_csproj(project_path: &Path) -> Result<(), Error> {
-    let project_dir = project_path
-        .parent()
-        .expect("Failed to compute project directory path!");
-
-    let mut root = read_xml_file(project_path)?;
-
-    process_tree(&mut root, csproj_element_transform);
-
-    let mut writer = std::io::BufWriter::new(tempfile::NamedTempFile::new_in(project_dir)?);
-
-    root.write_with_config(
-        &mut writer,
-        xmltree::EmitterConfig {
-            perform_escaping: true,
-            perform_indent: true,
-            write_document_declaration: false,
-            line_separator: "\r\n".into(),
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    writer.into_inner().unwrap().persist(&project_path)?;
-
-    Ok(())
+    transform_xml_file(project_path, |mut root| {
+        process_tree(&mut root, csproj_element_transform);
+        Some(root)
+    })
 }
 
 fn csproj_element_transform(element: &mut xmltree::Element) {
@@ -294,24 +265,4 @@ fn csproj_element_transform(element: &mut xmltree::Element) {
             other => Some(other),
         })
         .collect();
-}
-
-fn process_tree<F>(element: &mut xmltree::Element, process_element: F)
-where
-    F: Fn(&mut xmltree::Element) + Copy,
-{
-    for node in element.children.iter_mut() {
-        match node {
-            xmltree::XMLNode::Element(element) => process_tree(element, process_element),
-            _ => {}
-        }
-    }
-    process_element(element)
-}
-
-fn all_children_whitespace(element: &xmltree::Element) -> bool {
-    element.children.iter().all(|node| match node {
-        xmltree::XMLNode::Text(text) => text.chars().all(|c| c.is_whitespace()),
-        _ => false,
-    })
 }

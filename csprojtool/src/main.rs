@@ -2,9 +2,10 @@ mod cli;
 mod csproj;
 mod dependency_graph;
 mod list_projects;
+mod move_command;
 mod path_extensions;
 mod post_migration_cleanup;
-
+mod xml_extensions;
 pub use dependency_graph::*;
 pub use list_projects::*;
 pub use post_migration_cleanup::*;
@@ -22,6 +23,8 @@ fn get_search_path(matches: &clap::ArgMatches) -> PathBuf {
 }
 
 fn main() {
+    ::pretty_env_logger::init();
+
     let app = cli::build_cli();
     let matches = app.get_matches();
 
@@ -49,5 +52,9 @@ fn main() {
             follow_project_references: !matches.is_present(cli::ARG_NO_FOLLOW),
             exclude_sdk: matches.is_present(cli::ARG_EXCLUDE_SDK),
         });
+    }
+
+    if let Some(command) = move_command::MoveCommand::try_from_matches(&matches) {
+        command.execute().unwrap();
     }
 }

@@ -276,29 +276,6 @@ pub fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
     })
 }
 
-fn strip_bom<R: std::io::BufRead>(reader: &mut R) {
-    // Get rid of UTF-8 BOM if present.
-    let bytes = std::io::BufRead::fill_buf(reader).unwrap();
-
-    let mut consume_count = 0;
-    if &bytes[0..2] == "\u{FEFF}".as_bytes() {
-        consume_count = 2;
-    };
-
-    // What the hell http://www.herongyang.com/Unicode/Notepad-Byte-Order-Mark-BOM-FEFF-EFBBBF.html
-    if &bytes[0..3] == [0xEF, 0xBB, 0xBF] {
-        consume_count = 3;
-    };
-
-    std::io::BufRead::consume(reader, consume_count);
-}
-
-pub fn read_xml_file<P: AsRef<Path>>(path: P) -> Result<xmltree::Element, Error> {
-    let mut reader = std::io::BufReader::new(std::fs::File::open(path.as_ref())?);
-    strip_bom(&mut reader);
-    Ok(xmltree::Element::parse(&mut reader)?)
-}
-
 fn parse_target_framework_version(text: &str) -> Option<String> {
     lazy_static::lazy_static! {
         static ref RE: regex::Regex = regex::Regex::new(r"^\s*v(\d)\.(\d)(?:\.(\d))?\s*$").unwrap();

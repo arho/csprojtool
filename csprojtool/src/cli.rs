@@ -83,5 +83,6 @@ pub fn build_cli() -> App<'static, 'static> {
                 .arg(arg_search)
                 .arg(arg_no_follow)
                 .arg(exclude_sdk),
+            crate::move_command::MoveCommand::subcommand(),
         ])
 }
