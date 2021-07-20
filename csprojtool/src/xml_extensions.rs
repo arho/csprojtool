@@ -1,25 +1,22 @@
 use std::path::Path;
 
+use xmltree::{Element, XMLNode};
+
 use crate::csproj::Error;
 
-pub fn process_tree<F>(element: &mut xmltree::Element, process_element: F)
+pub fn process_tree<F>(element: &mut Element, process_element: F)
 where
-    F: FnMut(&mut xmltree::Element),
+    F: FnMut(&mut Element),
 {
     process_tree_inner(element, process_element);
 }
 
-fn process_tree_inner<F>(element: &mut xmltree::Element, mut process_element: F) -> F
+fn process_tree_inner<F>(element: &mut Element, mut process_element: F) -> F
 where
-    F: FnMut(&mut xmltree::Element),
+    F: FnMut(&mut Element),
 {
-    for child in element.children.iter_mut() {
-        match child {
-            xmltree::XMLNode::Element(element) => {
-                process_element = process_tree_inner(element, process_element);
-            }
-            _ => {}
-        }
+    for element in child_elements_mut(element) {
+        process_element = process_tree_inner(element, process_element);
     }
 
     process_element(element);
@@ -27,7 +24,7 @@ where
     process_element
 }
 
-pub fn all_children_whitespace(element: &xmltree::Element) -> bool {
+pub fn all_children_whitespace(element: &Element) -> bool {
     element.children.iter().all(|node| match node {
         xmltree::XMLNode::Text(text) => text.chars().all(|c| c.is_whitespace()),
         _ => false,
@@ -51,15 +48,15 @@ fn strip_bom<R: std::io::BufRead>(reader: &mut R) {
     std::io::BufRead::consume(reader, consume_count);
 }
 
-pub fn read_xml_file<P: AsRef<Path>>(path: P) -> Result<xmltree::Element, Error> {
+pub fn read_xml_file<P: AsRef<Path>>(path: P) -> Result<Element, Error> {
     let mut reader = std::io::BufReader::new(std::fs::File::open(path.as_ref())?);
     strip_bom(&mut reader);
-    Ok(xmltree::Element::parse(&mut reader)?)
+    Ok(Element::parse(&mut reader)?)
 }
 
 pub fn transform_xml_file<F>(file_path: &Path, transform: F) -> Result<(), Error>
 where
-    F: FnOnce(xmltree::Element) -> Option<xmltree::Element>,
+    F: FnOnce(Element) -> Option<Element>,
 {
     let dir_path = file_path.parent().unwrap();
 
@@ -84,4 +81,26 @@ where
     }
 
     Ok(())
+}
+
+fn node_as_element(node: &XMLNode) -> Option<&Element> {
+    match node {
+        XMLNode::Element(element) => Some(element),
+        _ => None,
+    }
+}
+
+pub fn child_elements(element: &Element) -> impl Iterator<Item = &Element> {
+    element.children.iter().filter_map(node_as_element)
+}
+
+fn node_as_element_mut(node: &mut XMLNode) -> Option<&mut Element> {
+    match node {
+        XMLNode::Element(element) => Some(element),
+        _ => None,
+    }
+}
+
+pub fn child_elements_mut(element: &mut Element) -> impl Iterator<Item = &mut Element> {
+    element.children.iter_mut().filter_map(node_as_element_mut)
 }

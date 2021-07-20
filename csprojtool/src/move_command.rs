@@ -8,7 +8,7 @@ use log::debug;
 
 use crate::{
     path_extensions::{relative_path, PathExt},
-    xml_extensions::{process_tree, transform_xml_file},
+    xml_extensions::{child_elements, process_tree, transform_xml_file},
 };
 
 const ARG_FROM: &'static str = "from";
@@ -212,9 +212,42 @@ impl MoveCommand {
         }
 
         transform_xml_file(&new_file, |mut root| {
+            use xmltree::{Element, XMLNode};
+
             let mut edited = false;
 
             process_tree(&mut root, |element| match element.name.as_ref() {
+                "Project" => {
+                    let mut has_root_namespace = false;
+                    let mut has_assembly_name = false;
+
+                    for property_group_element in
+                        child_elements(element).filter(|&e| e.name == "PropertyGroup")
+                    {
+                        has_root_namespace |= child_elements(property_group_element)
+                            .any(|e| e.name == "RootNamespace");
+                        has_assembly_name |= child_elements(property_group_element)
+                            .any(|e| e.name == "AssemblyName");
+                    }
+
+                    if let Some(property_group_element) = element.get_mut_child("PropertyGroup") {
+                        if !has_root_namespace {
+                            let mut el = Element::new("RootNamespace");
+                            el.children.push(XMLNode::Text(
+                                old_file.file_stem().unwrap().to_str().unwrap().to_owned(),
+                            ));
+                            property_group_element.children.push(XMLNode::Element(el));
+                        }
+
+                        if !has_assembly_name {
+                            let mut el = Element::new("AssemblyName");
+                            el.children.push(XMLNode::Text(
+                                old_file.file_stem().unwrap().to_str().unwrap().to_owned(),
+                            ));
+                            property_group_element.children.push(XMLNode::Element(el));
+                        }
+                    }
+                }
                 "ProjectReference" => {
                     if let Some(include) = element.attributes.get_mut("Include") {
                         let target_path = [&old_dir, Path::new(include)]
