@@ -92,7 +92,10 @@ impl MoveCommand {
         let cur_dir = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
 
         let (new_dir, new_file) = {
-            let path = [&cur_dir, &self.new].iter().collect::<PathBuf>().simplify();
+            // This converts the path to use OS slashes. Without this the joining may fail when combining windows and linux paths.
+            let new = self.new.simplify();
+            
+            let path = [&cur_dir, &new].iter().collect::<PathBuf>().simplify();
 
             if path.extension() == Some(OsStr::new("csproj")) {
                 (path.parent().unwrap().to_owned(), path)
