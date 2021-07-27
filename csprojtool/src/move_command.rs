@@ -61,12 +61,12 @@ impl MoveCommand {
         debug!("moving {0} to {1}", self.old.display(), self.new.display());
 
         let (old_dir, old_file) = {
-            let old = std::fs::canonicalize(&self.old)?;
-            let meta = std::fs::metadata(&old)?;
+            let old = std::fs::canonicalize(&self.old).unwrap();
+            let meta = std::fs::metadata(&old).unwrap();
             if meta.is_file() {
                 (old.parent().unwrap().to_owned(), old)
             } else if meta.is_dir() {
-                let mut csprojs_in_dir = find_dir_csproj(&old)?;
+                let mut csprojs_in_dir = find_dir_csproj(&old).unwrap();
                 let first = csprojs_in_dir.next();
 
                 let second = csprojs_in_dir.next();
@@ -89,7 +89,7 @@ impl MoveCommand {
 
         debug!("determined old path to be {}", old_file.display());
 
-        let cur_dir = std::fs::canonicalize(std::env::current_dir()?)?;
+        let cur_dir = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
 
         let (new_dir, new_file) = {
             let path = [&cur_dir, &self.new].iter().collect::<PathBuf>().simplify();
@@ -118,7 +118,7 @@ impl MoveCommand {
 
         debug!("determined new path to be {}", new_file.display());
 
-        let root = find_root(&old_dir)?.unwrap_or(&cur_dir);
+        let root = find_root(&old_dir).unwrap().unwrap_or(&cur_dir);
 
         debug!("root: {}", root.display());
 
