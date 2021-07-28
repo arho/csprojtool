@@ -8,7 +8,7 @@ use log::debug;
 
 use crate::{
     path_extensions::{relative_path, PathExt},
-    xml_extensions::{child_elements, process_tree, transform_xml_file},
+    xml_extensions::{child_elements, depth_first_visit_nodes, process_tree, transform_xml_file},
 };
 
 const ARG_FROM: &'static str = "from";
@@ -94,7 +94,7 @@ impl MoveCommand {
         let (new_dir, new_file) = {
             // This converts the path to use OS slashes. Without this the joining may fail when combining windows and linux paths.
             let new = self.new.simplify();
-            
+
             let path = [&cur_dir, &new].iter().collect::<PathBuf>().simplify();
 
             if path.extension() == Some(OsStr::new("csproj")) {
@@ -159,15 +159,22 @@ impl MoveCommand {
         }
 
         // Move the files
-        Command::new("git")
-            .args(&[OsStr::new("mv"), old_dir.as_os_str(), new_dir.as_os_str()])
-            .output()
-            .expect("failed to move files");
+        let mut mv_dir = Command::new("git");
+        mv_dir.args(&[OsStr::new("mv"), old_dir.as_os_str(), new_dir.as_os_str()]);
+        debug!("{:?}", &mv_dir);
+        mv_dir.output().expect("failed to move files");
 
         {
             let current_path = new_dir.join(old_file.file_name().unwrap());
             if &current_path != &new_file {
-                std::fs::rename(&current_path, &new_file).unwrap();
+                let mut mv_file = Command::new("git");
+                mv_file.args(&[
+                    OsStr::new("mv"),
+                    current_path.as_os_str(),
+                    new_file.as_os_str(),
+                ]);
+                debug!("{:?}", &mv_file);
+                mv_file.output().expect("failed to move files");
             }
         }
 
@@ -178,9 +185,8 @@ impl MoveCommand {
 
             let csproj_dir = csproj_path.parent().unwrap();
 
+            let mut edited = false;
             transform_xml_file(csproj_path, |mut root| {
-                let mut edited = false;
-
                 process_tree(&mut root, |element| match element.name.as_ref() {
                     "ProjectReference" => {
                         if let Some(include) = element.attributes.get_mut("Include") {
@@ -212,64 +218,38 @@ impl MoveCommand {
                 }
             })
             .unwrap();
+
+            if edited {
+                let mut add_file = Command::new("git");
+                add_file.args(&[OsStr::new("add"), csproj_path.as_os_str()]);
+                debug!("{:?}", &add_file);
+                add_file.output().expect("failed to add file");
+            }
         }
 
+        let mut edited = false;
+
         transform_xml_file(&new_file, |mut root| {
-            use xmltree::{Element, XMLNode};
+            depth_first_visit_nodes(&mut root, |node| {
+                use xmltree::XMLNode;
 
-            let mut edited = false;
-
-            process_tree(&mut root, |element| match element.name.as_ref() {
-                "Project" => {
-                    let mut has_root_namespace = false;
-                    let mut has_assembly_name = false;
-
-                    for property_group_element in
-                        child_elements(element).filter(|&e| e.name == "PropertyGroup")
-                    {
-                        has_root_namespace |= child_elements(property_group_element)
-                            .any(|e| e.name == "RootNamespace");
-                        has_assembly_name |= child_elements(property_group_element)
-                            .any(|e| e.name == "AssemblyName");
-                    }
-
-                    if let Some(property_group_element) = element.get_mut_child("PropertyGroup") {
-                        if !has_root_namespace {
-                            let mut el = Element::new("RootNamespace");
-                            el.children.push(XMLNode::Text(
-                                old_file.file_stem().unwrap().to_str().unwrap().to_owned(),
-                            ));
-                            property_group_element.children.push(XMLNode::Element(el));
+                match node {
+                    XMLNode::Element(element) => match element.name.as_ref() {
+                        "Project" => {
+                            let name = old_file.file_stem().unwrap().to_str().unwrap();
+                            edited |= ensure_root_namespace_and_assembly_name(element, name);
                         }
-
-                        if !has_assembly_name {
-                            let mut el = Element::new("AssemblyName");
-                            el.children.push(XMLNode::Text(
-                                old_file.file_stem().unwrap().to_str().unwrap().to_owned(),
-                            ));
-                            property_group_element.children.push(XMLNode::Element(el));
+                        _ => {
+                            for (_, val) in element.attributes.iter_mut() {
+                                edited |= try_rewrite_relative_path(val, &old_dir, &new_dir);
+                            }
                         }
+                    },
+                    XMLNode::Text(text) => {
+                        edited |= try_rewrite_relative_path(text, &old_dir, &new_dir);
                     }
+                    _ => {}
                 }
-                "ProjectReference" => {
-                    if let Some(include) = element.attributes.get_mut("Include") {
-                        let target_path = [&old_dir, Path::new(include)]
-                            .iter()
-                            .collect::<PathBuf>()
-                            .simplify();
-
-                        let new_ref = relative_path(&new_dir, &target_path);
-                        debug!(
-                            "replacing project reference {} with {} in {}",
-                            include,
-                            new_ref.display(),
-                            new_file.display()
-                        );
-                        *include = new_ref.to_str().unwrap().to_owned();
-                        edited = true;
-                    }
-                }
-                _ => {}
             });
 
             if edited {
@@ -280,8 +260,82 @@ impl MoveCommand {
         })
         .unwrap();
 
+        if edited {
+            let mut add_file = Command::new("git");
+            add_file.args(&[OsStr::new("add"), new_file.as_os_str()]);
+            debug!("{:?}", &add_file);
+            add_file.output().expect("failed to add file");
+        }
+
         Ok(())
     }
+}
+
+fn try_rewrite_relative_path(val: &mut String, old_dir: &Path, new_dir: &Path) -> bool {
+    if !looks_like_out_of_tree_relative_path(val) {
+        return false;
+    }
+
+    let mut edited = true;
+    let path = Path::new(val);
+    if !path.has_root() {
+        let path = path.simplify();
+        let old_abs_path = old_dir.join(&path).simplify();
+        match std::fs::metadata(&old_abs_path) {
+            Ok(_) => {
+                let new_rel_path = relative_path(&new_dir, &old_abs_path);
+                debug!(
+                    "rewriting relative path from {} to {}",
+                    val,
+                    new_rel_path.display(),
+                );
+                *val = new_rel_path.to_str().unwrap().to_owned();
+                edited = true;
+            }
+            _ => {}
+        }
+    }
+    edited
+}
+
+fn looks_like_out_of_tree_relative_path(val: &str) -> bool {
+    lazy_static::lazy_static! {
+        static ref RE: regex::Regex = regex::Regex::new(r"\.\.[/\\]").unwrap();
+    }
+    RE.is_match(val)
+}
+
+fn ensure_root_namespace_and_assembly_name(element: &mut xmltree::Element, name: &str) -> bool {
+    use xmltree::{Element, XMLNode};
+
+    let mut has_root_namespace = false;
+    let mut has_assembly_name = false;
+    let mut modified = false;
+
+    for property_group_element in child_elements(element).filter(|&e| e.name == "PropertyGroup") {
+        has_root_namespace |=
+            child_elements(property_group_element).any(|e| e.name == "RootNamespace");
+        has_assembly_name |=
+            child_elements(property_group_element).any(|e| e.name == "AssemblyName");
+    }
+
+    if let Some(property_group_element) = element.get_mut_child("PropertyGroup") {
+        if !has_root_namespace {
+            let mut el = Element::new("RootNamespace");
+            el.children.push(XMLNode::Text(name.to_owned()));
+            property_group_element.children.push(XMLNode::Element(el));
+            modified = true;
+        }
+
+        if !has_assembly_name {
+            let mut el = Element::new("AssemblyName");
+            el.children.push(XMLNode::Text(name.to_owned()));
+            property_group_element.children.push(XMLNode::Element(el));
+            modified = true;
+        }
+    }
+
+    modified
 }
 
 fn find_root(mut dir: &Path) -> Result<Option<&Path>, std::io::Error> {

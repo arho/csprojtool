@@ -24,6 +24,28 @@ where
     process_element
 }
 
+pub fn depth_first_visit_nodes<F>(element: &mut Element, process_element: F)
+where
+    F: FnMut(&mut XMLNode),
+{
+    inner_depth_first_visit_nodes(element, process_element);
+}
+
+fn inner_depth_first_visit_nodes<F>(element: &mut Element, mut process_element: F) -> F
+where
+    F: FnMut(&mut XMLNode),
+{
+    for element in child_elements_mut(element) {
+        process_element = inner_depth_first_visit_nodes(element, process_element);
+    }
+
+    for child in element.children.iter_mut() {
+        process_element(child);
+    }
+
+    process_element
+}
+
 pub fn all_children_whitespace(element: &Element) -> bool {
     element.children.iter().all(|node| match node {
         xmltree::XMLNode::Text(text) => text.chars().all(|c| c.is_whitespace()),
