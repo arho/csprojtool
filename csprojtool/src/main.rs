@@ -9,6 +9,7 @@ mod xml_extensions;
 pub use dependency_graph::*;
 pub use list_projects::*;
 pub use post_migration_cleanup::*;
+mod sln;
 
 use std::path::{Path, PathBuf};
 
