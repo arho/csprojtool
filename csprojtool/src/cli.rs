@@ -6,10 +6,12 @@ pub const ARG_EXCLUDE_SDK: &'static str = "exclude-sdk";
 pub const ARG_NO_FOLLOW: &'static str = "no-follow";
 pub const ARG_GLOB: &'static str = "glob";
 pub const ARG_JSON: &'static str = "json";
-pub const ARG_SEARCH: &'static str = "search";
+pub const ARG_SEARCH_PATH: &'static str = "search";
+pub const ARG_SLN_PATH: &'static str = "sln-file-path";
 pub const CMD_DEPENDENCY_GRAPH: &'static str = "dependency-graph";
 pub const CMD_LIST_PROJECTS: &'static str = "list-projects";
 pub const CMD_POST_MIGRATION_CLEANUP: &'static str = "post-migration-cleanup";
+pub const CMD_SLN: &'static str = "sln";
 
 #[cfg(windows)]
 const DEFAULT_GLOB: &'static str = "**\\*.csproj";
@@ -30,10 +32,9 @@ pub fn build_cli() -> App<'static, 'static> {
         .takes_value(true)
         .default_value(DEFAULT_GLOB);
 
-    let arg_search = &Arg::with_name(ARG_SEARCH)
-        .value_name("PATH")
+    let arg_search = &Arg::with_name(ARG_SEARCH_PATH)
+        .value_name("SEARCH_PATH")
         .help("Sets the file to process or directory to search")
-        .index(1)
         .default_value(DEFAULT_SEARCH);
 
     let arg_no_follow = &Arg::with_name(ARG_NO_FOLLOW)
@@ -57,30 +58,42 @@ pub fn build_cli() -> App<'static, 'static> {
         .subcommands(vec![
             clap::SubCommand::with_name(CMD_DEPENDENCY_GRAPH)
                 .about("Generate dependency graph of project references")
-                .arg(arg_glob)
                 .arg(arg_search)
+                .arg(arg_glob)
                 .arg(
                     Arg::with_name(ARG_DOT)
                         .long("dot")
-                        .value_name("PATH")
+                        .value_name("DOT_PATH")
                         .help("Writes the output to a dot file"),
                 )
                 .arg(
                     Arg::with_name(ARG_JSON)
                         .long("json")
-                        .value_name("PATH")
+                        .value_name("JSON_PATH")
                         .help("Writes the output to a json file"),
                 ),
             clap::SubCommand::with_name(CMD_POST_MIGRATION_CLEANUP)
                 .about("Perform post csproj migration cleanup")
-                .arg(arg_glob)
                 .arg(arg_search)
+                .arg(arg_glob)
                 .arg(arg_no_follow)
                 .arg(arg_clean_app_config),
             clap::SubCommand::with_name(CMD_LIST_PROJECTS)
                 .about("List all projects and their dependencies")
-                .arg(arg_glob)
                 .arg(arg_search)
+                .arg(arg_glob)
+                .arg(arg_no_follow)
+                .arg(exclude_sdk),
+            clap::SubCommand::with_name(CMD_SLN)
+                .about("Generate a solution file")
+                .arg(
+                    Arg::with_name(ARG_SLN_PATH)
+                        .required(true)
+                        .value_name("SLN_PATH")
+                        .help("Path to the solution file"),
+                )
+                .arg(arg_search)
+                .arg(arg_glob)
                 .arg(arg_no_follow)
                 .arg(exclude_sdk),
             crate::move_command::MoveCommand::subcommand(),

@@ -9,6 +9,7 @@ mod xml_extensions;
 pub use dependency_graph::*;
 pub use list_projects::*;
 pub use post_migration_cleanup::*;
+mod sln;
 
 use std::path::{Path, PathBuf};
 
@@ -18,7 +19,7 @@ fn get_glob_matcher(matches: &clap::ArgMatches) -> globset::GlobMatcher {
 }
 
 fn get_search_path(matches: &clap::ArgMatches) -> PathBuf {
-    let search_path = matches.value_of(cli::ARG_SEARCH).unwrap();
+    let search_path = matches.value_of(cli::ARG_SEARCH_PATH).unwrap();
     std::fs::canonicalize(search_path).unwrap()
 }
 
@@ -30,7 +31,7 @@ fn main() {
 
     if let Some(matches) = matches.subcommand_matches(cli::CMD_DEPENDENCY_GRAPH) {
         let glob = matches.value_of(cli::ARG_GLOB).unwrap();
-        let search = matches.value_of(cli::ARG_SEARCH).unwrap();
+        let search = matches.value_of(cli::ARG_SEARCH_PATH).unwrap();
         let dot = matches.value_of(cli::ARG_DOT);
         let json = matches.value_of(cli::ARG_JSON);
         dependency_graph(glob, search, dot, json);
@@ -51,6 +52,15 @@ fn main() {
             glob_matcher: get_glob_matcher(&matches),
             follow_project_references: !matches.is_present(cli::ARG_NO_FOLLOW),
             exclude_sdk: matches.is_present(cli::ARG_EXCLUDE_SDK),
+        });
+    }
+
+    if let Some(matches) = matches.subcommand_matches(cli::CMD_SLN) {
+        sln::sln(sln::SlnOptions {
+            sln_path: std::path::PathBuf::from(matches.value_of(cli::ARG_SLN_PATH).unwrap()),
+            search_path: get_search_path(&matches),
+            glob_matcher: get_glob_matcher(&matches),
+            follow_project_references: !matches.is_present(cli::ARG_NO_FOLLOW),
         });
     }
 

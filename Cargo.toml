@@ -4,5 +4,8 @@ members = [
     "xml",
 ]
 
+[profile.dev]
+opt-level = 1
+
 [patch.crates-io]
 xml-rs = { path = 'xml' }
