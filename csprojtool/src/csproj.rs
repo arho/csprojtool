@@ -152,7 +152,7 @@ pub fn parse_projects(
     projects.into_iter().map(|(k, v)| (k, v.unwrap())).collect()
 }
 
-fn find_files<'a>(
+pub fn find_files<'a>(
     search_path: &Path,
     glob_matcher: &'a globset::GlobMatcher,
 ) -> impl Iterator<Item = PathBuf> + 'a {

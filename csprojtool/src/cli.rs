@@ -9,12 +9,19 @@ pub const ARG_JSON: &'static str = "json";
 pub const ARG_SEARCH: &'static str = "search";
 pub const CMD_DEPENDENCY_GRAPH: &'static str = "dependency-graph";
 pub const CMD_LIST_PROJECTS: &'static str = "list-projects";
+pub const CMD_VALIDATE_SOLUTIONS: &'static str = "validate-solutions";
 pub const CMD_POST_MIGRATION_CLEANUP: &'static str = "post-migration-cleanup";
 
 #[cfg(windows)]
 const DEFAULT_GLOB: &'static str = "**\\*.csproj";
 #[cfg(not(windows))]
 const DEFAULT_GLOB: &'static str = "**/*.csproj";
+
+#[cfg(windows)]
+const DEFAULT_SLN_GLOB: &'static str = "**\\*.sln";
+
+#[cfg(not(windows))]
+const DEFAULT_SLN_GLOB: &'static str = "**/*.sln";
 
 #[cfg(windows)]
 const DEFAULT_SEARCH: &'static str = ".\\";
@@ -29,6 +36,14 @@ pub fn build_cli() -> App<'static, 'static> {
         .help("Specifies the glob pattern for which files to include")
         .takes_value(true)
         .default_value(DEFAULT_GLOB);
+    
+    let arg_sln_glob = &Arg::with_name(ARG_GLOB)
+        .short("g")
+        .long("glob")
+        .value_name("GLOB")
+        .help("Specifies the glob pattern for which files to include")
+        .takes_value(true)
+        .default_value(DEFAULT_SLN_GLOB);
 
     let arg_search = &Arg::with_name(ARG_SEARCH)
         .value_name("PATH")
@@ -83,6 +98,10 @@ pub fn build_cli() -> App<'static, 'static> {
                 .arg(arg_search)
                 .arg(arg_no_follow)
                 .arg(exclude_sdk),
+            clap::SubCommand::with_name(CMD_VALIDATE_SOLUTIONS)
+                .about("Validate project references in solution files")
+                .arg(arg_sln_glob)
+                .arg(arg_search),
             crate::move_command::MoveCommand::subcommand(),
         ])
 }

@@ -1,7 +1,14 @@
+extern crate regex;
+use regex::Regex;
+use crate::csproj::*;
+use crate::path_extensions::*;
 use siphasher::sip128::Hasher128;
 use std::collections::BTreeMap;
+use std::collections::HashMap; 
 use std::hash::Hash;
-use std::{io::Write, path::PathBuf};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::{io::Write, path::PathBuf, path::Path};
 use uuid::Uuid;
 
 const HEADER: &'static str = r###"
@@ -63,6 +70,56 @@ fn compute_hierarchy(projects: &[Project]) -> Directory {
     root
 }
 
+pub fn read_and_parse_solutions(
+    search_path: &Path,
+    glob_matcher: &globset::GlobMatcher,
+) -> HashMap<PathBuf, Result<SolutionFile, Error>> {
+    let meta = std::fs::metadata(search_path).unwrap();
+    let todo: Vec<PathBuf> = if meta.is_file() {
+        vec![search_path.to_path_buf()]
+    } else {
+        find_files(search_path, glob_matcher).collect()
+    };
+
+    todo.iter()
+        .map(|sln_path| (sln_path.clone(), read_and_parse_solution(sln_path.clone())))
+        .collect()
+}
+
+pub fn read_and_parse_solution(solution_path: PathBuf) -> Result<SolutionFile, Error> {
+    
+    // cargo-cult programming here, needs error handling improvement...
+
+    let mut projects = Vec::<Project>::new();
+    let file = File::open(&solution_path).unwrap();
+    let reader = BufReader::new(file);
+    let rg_proj = Regex::new(r###"Project\("(?P<type_id>\{.*\})"\) = "(?P<name>.*)", "(?P<path>.*)", "(?P<proj_id>\{.*\})""###).unwrap();
+    let sln_dir = solution_path
+        .parent()
+        .expect("Failed to compute solution directory path!");
+    for (_index, line) in reader.lines().enumerate() {
+        let line = line.unwrap(); // Ignore errors.        
+        match rg_proj.captures(&line) {            
+            Some(_match) => {
+                let path = _match.name("path").unwrap().as_str();
+                let proj_path = PathBuf::from(path);
+                let proj_path = sln_dir.join(&proj_path).simplify();
+                //let proj_path = std::fs::canonicalize(proj_path).unwrap();          
+                let proj = Project{
+                    path: proj_path
+                };
+                projects.push(proj);
+            },
+            None    => {}
+        }
+    }  
+   
+    Ok(SolutionFile {
+        projects: projects,
+    })
+}
+
+
 impl SolutionFile {
     pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         writer.write_all(HEADER.as_bytes())?;
@@ -72,6 +129,16 @@ impl SolutionFile {
         root.write_projects(writer)?;
 
         Ok(())
+    }
+
+    pub fn projects(&self) -> Vec<Project> {
+        self.projects.clone()
+    }
+
+}
+impl Project {
+    pub fn path(&self) -> PathBuf {
+        self.path.clone()
     }
 }
 
