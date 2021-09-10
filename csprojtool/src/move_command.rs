@@ -57,7 +57,7 @@ impl MoveCommand {
         }
     }
 
-    pub fn execute(&self) -> std::io::Result<()> {
+    pub fn execute(&self) {
         debug!("moving {0} to {1}", self.old.display(), self.new.display());
 
         let (old_dir, old_file) = {
@@ -66,7 +66,7 @@ impl MoveCommand {
             if meta.is_file() {
                 (old.parent().unwrap().to_owned(), old)
             } else if meta.is_dir() {
-                let mut csprojs_in_dir = find_dir_csproj(&old).unwrap();
+                let mut csprojs_in_dir = find_dir_csproj(&old);
                 let first = csprojs_in_dir.next();
 
                 let second = csprojs_in_dir.next();
@@ -75,7 +75,7 @@ impl MoveCommand {
                 }
 
                 if let Some(first) = first {
-                    (old, first?)
+                    (old, first)
                 } else {
                     panic!("No csproj found in {}", old.display());
                 }
@@ -115,7 +115,7 @@ impl MoveCommand {
                     panic!("Target directory {} already exists", new_dir.display());
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e),
+                Err(e) => Err(e).unwrap(),
             }
         }
 
@@ -266,8 +266,6 @@ impl MoveCommand {
             debug!("{:?}", &add_file);
             add_file.output().expect("failed to add file");
         }
-
-        Ok(())
     }
 }
 
@@ -340,7 +338,7 @@ fn ensure_root_namespace_and_assembly_name(element: &mut xmltree::Element, name:
 
 fn find_root(mut dir: &Path) -> Result<Option<&Path>, std::io::Error> {
     loop {
-        if dir_contains_git(dir)? {
+        if dir_contains_git(dir) {
             return Ok(Some(dir));
         }
         dir = match dir.parent() {
@@ -350,31 +348,32 @@ fn find_root(mut dir: &Path) -> Result<Option<&Path>, std::io::Error> {
     }
 }
 
-fn dir_contains_git(dir: &Path) -> Result<bool, std::io::Error> {
-    for entry in std::fs::read_dir(dir)? {
-        if entry_is_git(&entry?)? {
-            return Ok(true);
+fn dir_contains_git(dir: &Path) -> bool {
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        if entry_is_git(&entry) {
+            return true;
         }
     }
-    Ok(false)
+    false
 }
 
-fn entry_is_git(entry: &std::fs::DirEntry) -> Result<bool, std::io::Error> {
-    Ok(entry.file_type()?.is_dir() && entry.file_name() == ".git")
+fn entry_is_git(entry: &std::fs::DirEntry) -> bool {
+    entry.file_type().unwrap().is_dir() && entry.file_name() == ".git"
 }
 
-fn find_dir_csproj(dir: &Path) -> std::io::Result<impl Iterator<Item = std::io::Result<PathBuf>>> {
-    Ok(std::fs::read_dir(dir)?.filter_map(|entry| match entry {
-        Ok(entry) => match entry_is_csproj(&entry) {
-            Ok(true) => Some(Ok(entry.path())),
-            Ok(false) => None,
-            Err(e) => Some(Err(e)),
-        },
-        Err(e) => Some(Err(e)),
-    }))
+fn find_dir_csproj(dir: &Path) -> impl Iterator<Item = PathBuf> {
+    std::fs::read_dir(dir).unwrap().filter_map(|entry| {
+        let entry = entry.unwrap();
+        if entry_is_csproj(&entry) {
+            Some(entry.path())
+        } else {
+            None
+        }
+    })
 }
 
-fn entry_is_csproj(entry: &std::fs::DirEntry) -> Result<bool, std::io::Error> {
-    Ok(entry.file_type()?.is_file()
-        && AsRef::<Path>::as_ref(&entry.file_name()).extension() == Some(OsStr::new("csproj")))
+fn entry_is_csproj(entry: &std::fs::DirEntry) -> bool {
+    entry.file_type().unwrap().is_file()
+        && AsRef::<Path>::as_ref(&entry.file_name()).extension() == Some(OsStr::new("csproj"))
 }

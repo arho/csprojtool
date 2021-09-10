@@ -55,6 +55,6 @@ fn main() {
     }
 
     if let Some(command) = move_command::MoveCommand::try_from_matches(&matches) {
-        command.execute().unwrap();
+        command.execute();
     }
 }
