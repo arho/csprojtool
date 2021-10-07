@@ -106,12 +106,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doc-comment"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
-
-[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -562,11 +556,8 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "xml-rs"
-version = "0.8.3"
-dependencies = [
- "doc-comment",
- "lazy_static",
-]
+version = "0.8.4"
+source = "git+https://github.com/LogiqsAgro/xml-rs?branch=0.8.4-fix#4a26e74128240b55516e3d521c9438b0506d1e6e"
 
 [[package]]
 name = "xmlparser"

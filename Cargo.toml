@@ -1,11 +1,10 @@
 [workspace]
 members = [
     "csprojtool",
-    "xml",
 ]
 
 [profile.dev]
 opt-level = 1
 
 [patch.crates-io]
-xml-rs = { path = 'xml' }
+xml-rs = { git = "https://github.com/LogiqsAgro/xml-rs", branch = "0.8.4-fix" }
