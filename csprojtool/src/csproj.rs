@@ -1,8 +1,11 @@
 use crate::path_extensions::*;
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf};
+use uuid::Uuid;
 
 pub fn search_for_projects(glob_pattern: &str) -> HashMap<PathBuf, Option<Result<Project, Error>>> {
     glob::glob(glob_pattern)
@@ -30,6 +33,7 @@ pub struct Project {
     pub path: PathBuf,
     pub is_sdk: bool,
     pub is_exe: bool,
+    pub project_guid: Option<Uuid>,
     pub target_frameworks: Vec<String>,
     pub project_references: Vec<PathBuf>,
     pub package_references: Vec<PackageReference>,
@@ -172,7 +176,6 @@ fn find_files<'a>(
             }
         })
 }
-
 pub fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
     let contents = std::fs::read_to_string(&project_path)?;
 
@@ -195,6 +198,21 @@ pub fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
         .find(|node| node.tag_name().name() == "OutputType")
         .map_or(false, |node| {
             matches!(node.text(), Some("Exe") | Some("WinExe"))
+        });
+
+    lazy_static! {
+        static ref GUID_REGEX: Regex = Regex::new(r#"[a-fA-F0-9\-]+"#).unwrap();
+    }
+
+    let project_guid = document
+        .descendants()
+        .find(|node| node.tag_name().name() == "ProjectGuid")
+        .map(|node| {
+            let captures = GUID_REGEX
+                .captures(node.text().unwrap())
+                .expect("ProjectGuid element does not contain anything resembling a guid!");
+            Uuid::parse_str(&captures[0])
+                .expect("ProjectGuid element does not contain a valid guid!")
         });
 
     let target_frameworks = {
@@ -270,6 +288,7 @@ pub fn read_and_parse_project(project_path: PathBuf) -> Result<Project, Error> {
         path: project_path,
         is_sdk,
         is_exe,
+        project_guid,
         target_frameworks,
         project_references,
         package_references,
