@@ -8,6 +8,7 @@ mod post_migration_cleanup;
 mod xml_extensions;
 pub use dependency_graph::*;
 pub use list_projects::*;
+use path_extensions::PathExt;
 pub use post_migration_cleanup::*;
 mod sln;
 
@@ -20,7 +21,7 @@ fn get_glob_matcher(matches: &clap::ArgMatches) -> globset::GlobMatcher {
 
 fn get_search_path(matches: &clap::ArgMatches) -> PathBuf {
     let search_path = matches.value_of(cli::ARG_SEARCH_PATH).unwrap();
-    std::fs::canonicalize(search_path).unwrap()
+    Path::new(search_path).ensure_absolute().unwrap()
 }
 
 fn main() {

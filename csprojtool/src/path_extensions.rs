@@ -1,4 +1,35 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
+use std::ffi::OsStr;
+
+#[derive(Eq, PartialEq, PartialOrd, Ord)]
+enum ReducedPrefix<'a> {
+    Verbatim(&'a OsStr),
+    DeviceNS(&'a OsStr),
+    UNC(&'a OsStr, &'a OsStr),
+    Disk(u8),
+}
+
+impl<'a> From<Prefix<'a>> for ReducedPrefix<'a> {
+    fn from(prefix: Prefix<'a>) -> Self {
+        match prefix {
+            Prefix::Verbatim(a) => Self::Verbatim(a),
+            Prefix::VerbatimUNC(a, b) => Self::UNC(a, b),
+            Prefix::VerbatimDisk(a) => Self::Disk(a),
+            Prefix::DeviceNS(a) => Self::DeviceNS(a),
+            Prefix::UNC(a, b) => Self::UNC(a, b),
+            Prefix::Disk(a) => Self::Disk(a),
+        }
+    }
+}
+
+fn comps_eq(a: &Component, b: &Component) -> bool {
+    match (a, b) {
+        (Component::Prefix(a), Component::Prefix(b)) => {
+            ReducedPrefix::from(a.kind()) == ReducedPrefix::from(b.kind())
+        }
+        _ => a == b
+    }
+}
 
 pub fn relative_path(abs_src_dir: &Path, abs_dst_path: &Path) -> PathBuf {
     let mut abs_src_dir_comps = abs_src_dir.components().peekable();
@@ -6,7 +37,7 @@ pub fn relative_path(abs_src_dir: &Path, abs_dst_path: &Path) -> PathBuf {
 
     // Skip common prefix
     while let (Some(sc), Some(tc)) = (abs_src_dir_comps.peek(), abs_dst_path_comps.peek()) {
-        if sc != tc {
+        if comps_eq(sc, tc) {
             break;
         }
         abs_src_dir_comps.next();
@@ -21,6 +52,9 @@ pub fn relative_path(abs_src_dir: &Path, abs_dst_path: &Path) -> PathBuf {
 
 pub trait PathExt {
     fn simplify(&self) -> PathBuf;
+
+    /// Prepends the current directory (working directory) if the path is not already absolute.
+    fn ensure_absolute(&self) -> std::io::Result<PathBuf>;
 }
 
 impl PathExt for Path {
@@ -44,6 +78,15 @@ impl PathExt for Path {
         }
 
         result
+    }
+
+    /// Prepends the current directory (working directory) if the path is not already absolute.
+    fn ensure_absolute(&self) -> std::io::Result<PathBuf> {
+        if self.is_absolute() {
+            Ok(self.to_owned())
+        } else {
+            Ok(std::env::current_dir()?.join(self))
+        }
     }
 }
 

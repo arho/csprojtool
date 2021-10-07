@@ -1,6 +1,8 @@
 mod file;
 mod types;
 
+use log::debug;
+
 use crate::csproj::*;
 use crate::path_extensions::*;
 use std::path::Path;
@@ -21,10 +23,14 @@ pub fn sln(options: SlnOptions) {
         follow_project_references,
     } = options;
 
-    let projects = parse_projects(&search_path, &glob_matcher, follow_project_references);
+    debug!("Generating solution {} starting in {} matching {}{}.",
+        sln_path.display(),
+        search_path.display(),
+        glob_matcher.glob(),
+        if follow_project_references { " while following project references" } else { " without following project references" },
+    );
 
-    let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
-    let sln_path = cwd.join(sln_path.simplify()).simplify();
+    let projects = parse_projects(&search_path, &glob_matcher, follow_project_references);
 
     let sln = create_solution(&sln_path, projects.into_iter().map(|(_, p)| p.unwrap()));
 
@@ -35,11 +41,14 @@ pub fn sln(options: SlnOptions) {
 
 fn create_solution(sln_path: &Path, projects: impl Iterator<Item = Project>) -> file::SolutionFile {
     let mut root = file::Directory::default();
+    let sln_path = sln_path.ensure_absolute().unwrap().simplify();
     let sln_dir = sln_path.parent().unwrap();
 
     for project in projects {
         let rel_project_path = relative_path(sln_dir, &project.path);
 
+        debug!("Adding {}", rel_project_path.display());
+        
         let mut components = rel_project_path.components().peekable();
 
         let mut dir = &mut root;
