@@ -37,7 +37,7 @@ pub fn relative_path(abs_src_dir: &Path, abs_dst_path: &Path) -> PathBuf {
 
     // Skip common prefix
     while let (Some(sc), Some(tc)) = (abs_src_dir_comps.peek(), abs_dst_path_comps.peek()) {
-        if comps_eq(sc, tc) {
+        if !comps_eq(sc, tc) {
             break;
         }
         abs_src_dir_comps.next();
@@ -130,6 +130,14 @@ mod tests {
         assert_eq!(
             Path::new(r"\\?\D:\..\files.txt"),
             Path::new(r"\\?\D:\..\files.txt").simplify(),
+        );
+    }
+
+    #[test]
+    fn relative_path_ignores_prefix_differences() {
+        assert_eq!(
+            relative_path(Path::new(r"C:\Users"), Path::new(r"\\?\C:\Users\Mick")),
+            PathBuf::from("Mick"),
         );
     }
 }

@@ -48,11 +48,16 @@ fn create_solution(sln_path: &Path, projects: impl Iterator<Item = Project>) -> 
     let mut root = file::Directory::default();
     let sln_path = sln_path.ensure_absolute().unwrap().simplify();
     let sln_dir = sln_path.parent().unwrap();
+    debug!("Solution dir {}", sln_dir.display());
 
     for project in projects {
         let rel_project_path = relative_path(sln_dir, &project.path);
 
-        debug!("Adding {}", rel_project_path.display());
+        debug!(
+            "Adding {} as relative path {}",
+            project.path.display(),
+            rel_project_path.display()
+        );
 
         let mut components = rel_project_path.components().peekable();
 
