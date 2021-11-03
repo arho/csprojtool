@@ -24,26 +24,26 @@ where
     process_element
 }
 
-pub fn depth_first_visit_nodes<F>(element: &mut Element, process_element: F)
+pub fn depth_first_visit_nodes<F>(node: &mut XMLNode, visit: F)
 where
     F: FnMut(&mut XMLNode),
 {
-    inner_depth_first_visit_nodes(element, process_element);
+    inner_depth_first_visit_nodes(node, visit);
 }
 
-fn inner_depth_first_visit_nodes<F>(element: &mut Element, mut process_element: F) -> F
+fn inner_depth_first_visit_nodes<F>(node: &mut XMLNode, mut visit: F) -> F
 where
     F: FnMut(&mut XMLNode),
 {
-    for element in child_elements_mut(element) {
-        process_element = inner_depth_first_visit_nodes(element, process_element);
+    if let XMLNode::Element(element) = node {
+        for child in element.children.iter_mut() {
+            visit = inner_depth_first_visit_nodes(child, visit);
+        }
     }
 
-    for child in element.children.iter_mut() {
-        process_element(child);
-    }
+    visit(node);
 
-    process_element
+    visit
 }
 
 pub fn all_children_whitespace(element: &Element) -> bool {

@@ -5,6 +5,7 @@ use std::{
 };
 
 use log::{debug, info};
+use xmltree::{Element, XMLNode};
 
 use crate::{
     path_extensions::{relative_path, PathExt},
@@ -229,28 +230,31 @@ impl MoveCommand {
 
         let mut edited = false;
 
-        transform_xml_file(&new_file, |mut root| {
-            depth_first_visit_nodes(&mut root, |node| {
-                use xmltree::XMLNode;
+        transform_xml_file(&new_file, |root| {
+            let mut root_node = XMLNode::Element(root);
 
-                match node {
-                    XMLNode::Element(element) => match element.name.as_ref() {
-                        "Project" => {
-                            let name = old_file.file_stem().unwrap().to_str().unwrap();
-                            edited |= ensure_root_namespace_and_assembly_name(element, name);
-                        }
-                        _ => {
-                            for (_, val) in element.attributes.iter_mut() {
-                                edited |= try_rewrite_relative_path(val, &old_dir, &new_dir);
-                            }
-                        }
-                    },
-                    XMLNode::Text(text) => {
-                        edited |= try_rewrite_relative_path(text, &old_dir, &new_dir);
+            depth_first_visit_nodes(&mut root_node, |node| match node {
+                XMLNode::Element(element) => match element.name.as_ref() {
+                    "Project" => {
+                        let name = old_file.file_stem().unwrap().to_str().unwrap();
+                        edited |= ensure_root_namespace_and_assembly_name(element, name);
                     }
-                    _ => {}
+                    _ => {
+                        for (_, val) in element.attributes.iter_mut() {
+                            edited |= try_rewrite_relative_path(val, &old_dir, &new_dir);
+                        }
+                    }
+                },
+                XMLNode::Text(text) => {
+                    edited |= try_rewrite_relative_path(text, &old_dir, &new_dir);
                 }
+                _ => {}
             });
+
+            let root = match root_node {
+                XMLNode::Element(root) => root,
+                _ => unreachable!(),
+            };
 
             if edited {
                 Some(root)
@@ -304,8 +308,6 @@ fn looks_like_out_of_tree_relative_path(val: &str) -> bool {
 }
 
 fn ensure_root_namespace_and_assembly_name(element: &mut xmltree::Element, name: &str) -> bool {
-    use xmltree::{Element, XMLNode};
-
     let (root_namespace, assembly_name) =
         child_elements(element).fold((None, None), |state, element| {
             if element.name == "PropertyGroup" {
