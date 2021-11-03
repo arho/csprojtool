@@ -1,5 +1,5 @@
-use std::path::{Component, Path, PathBuf, Prefix};
 use std::ffi::OsStr;
+use std::path::{Component, Path, PathBuf, Prefix};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 enum ReducedPrefix<'a> {
@@ -27,7 +27,7 @@ fn comps_eq(a: &Component, b: &Component) -> bool {
         (Component::Prefix(a), Component::Prefix(b)) => {
             ReducedPrefix::from(a.kind()) == ReducedPrefix::from(b.kind())
         }
-        _ => a == b
+        _ => a == b,
     }
 }
 

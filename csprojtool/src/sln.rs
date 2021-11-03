@@ -23,11 +23,16 @@ pub fn sln(options: SlnOptions) {
         follow_project_references,
     } = options;
 
-    debug!("Generating solution {} starting in {} matching {}{}.",
+    debug!(
+        "Generating solution {} starting in {} matching {}{}.",
         sln_path.display(),
         search_path.display(),
         glob_matcher.glob(),
-        if follow_project_references { " while following project references" } else { " without following project references" },
+        if follow_project_references {
+            " while following project references"
+        } else {
+            " without following project references"
+        },
     );
 
     let projects = parse_projects(&search_path, &glob_matcher, follow_project_references);
@@ -48,7 +53,7 @@ fn create_solution(sln_path: &Path, projects: impl Iterator<Item = Project>) -> 
         let rel_project_path = relative_path(sln_dir, &project.path);
 
         debug!("Adding {}", rel_project_path.display());
-        
+
         let mut components = rel_project_path.components().peekable();
 
         let mut dir = &mut root;

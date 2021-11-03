@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use log::debug;
+use log::{debug, info};
 
 use crate::{
     path_extensions::{relative_path, PathExt},
@@ -58,7 +58,7 @@ impl MoveCommand {
     }
 
     pub fn execute(&self) {
-        debug!("moving {0} to {1}", self.old.display(), self.new.display());
+        info!("moving {0} to {1}", self.old.display(), self.new.display());
 
         let (old_dir, old_file) = {
             let old = std::fs::canonicalize(&self.old).unwrap();
@@ -306,19 +306,43 @@ fn looks_like_out_of_tree_relative_path(val: &str) -> bool {
 fn ensure_root_namespace_and_assembly_name(element: &mut xmltree::Element, name: &str) -> bool {
     use xmltree::{Element, XMLNode};
 
-    let mut has_root_namespace = false;
-    let mut has_assembly_name = false;
-    let mut modified = false;
+    let (root_namespace, assembly_name) =
+        child_elements(element).fold((None, None), |state, element| {
+            if element.name == "PropertyGroup" {
+                (
+                    state
+                        .0
+                        .or_else(|| child_elements(element).find(|e| e.name == "RootNamespace")),
+                    state
+                        .1
+                        .or_else(|| child_elements(element).find(|e| e.name == "AssemblyName")),
+                )
+            } else {
+                state
+            }
+        });
 
-    for property_group_element in child_elements(element).filter(|&e| e.name == "PropertyGroup") {
-        has_root_namespace |=
-            child_elements(property_group_element).any(|e| e.name == "RootNamespace");
-        has_assembly_name |=
-            child_elements(property_group_element).any(|e| e.name == "AssemblyName");
+    if let Some(element) = root_namespace {
+        debug!(
+            "Project already contains RootNamespace: {}",
+            element.get_text().unwrap_or("".into())
+        );
     }
 
+    if let Some(element) = assembly_name {
+        debug!(
+            "Project already contains AssemblyName: {}",
+            element.get_text().unwrap_or("".into())
+        );
+    }
+
+    let has_root_namespace = root_namespace.is_some();
+    let has_assembly_name = root_namespace.is_some();
+
+    let mut modified = false;
     if let Some(property_group_element) = element.get_mut_child("PropertyGroup") {
         if !has_root_namespace {
+            info!("Adding RootNamespace to project: {}", name.to_owned());
             let mut el = Element::new("RootNamespace");
             el.children.push(XMLNode::Text(name.to_owned()));
             property_group_element.children.push(XMLNode::Element(el));
@@ -326,6 +350,7 @@ fn ensure_root_namespace_and_assembly_name(element: &mut xmltree::Element, name:
         }
 
         if !has_assembly_name {
+            info!("Adding AssemblyName to project: {}", name.to_owned());
             let mut el = Element::new("AssemblyName");
             el.children.push(XMLNode::Text(name.to_owned()));
             property_group_element.children.push(XMLNode::Element(el));
