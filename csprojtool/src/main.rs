@@ -21,7 +21,7 @@ fn get_glob_matcher(matches: &clap::ArgMatches) -> globset::GlobMatcher {
 
 fn get_search_path(matches: &clap::ArgMatches) -> PathBuf {
     let search_path = matches.value_of(cli::ARG_SEARCH_PATH).unwrap();
-    Path::new(search_path).ensure_absolute().unwrap()
+    Path::new(search_path).simplified_absolute().unwrap()
 }
 
 fn main() {
