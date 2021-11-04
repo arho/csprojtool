@@ -50,42 +50,47 @@ pub fn relative_path(abs_src_dir: &Path, abs_dst_path: &Path) -> PathBuf {
         .collect()
 }
 
+fn join_components<'a, I: Iterator<Item = Component<'a>>>(result: &mut PathBuf, components: I) {
+    for current in components {
+        match current {
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                result.push(current);
+            }
+            Component::ParentDir => {
+                if matches!(result.components().last(), Some(Component::Normal(_))) {
+                    result.pop();
+                } else {
+                    result.push(current);
+                }
+            }
+        }
+    }
+}
+
 pub trait PathExt {
     fn simplify(&self) -> PathBuf;
 
     /// Prepends the current directory (working directory) if the path is not already absolute.
-    fn ensure_absolute(&self) -> std::io::Result<PathBuf>;
+    fn simplified_absolute(&self) -> std::io::Result<PathBuf>;
 }
 
 impl PathExt for Path {
     fn simplify(&self) -> PathBuf {
-        let mut result = PathBuf::with_capacity(self.as_os_str().len());
-
-        for current in self.components() {
-            match current {
-                Component::CurDir => {}
-                Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
-                    result.push(current);
-                }
-                Component::ParentDir => {
-                    if matches!(result.components().last(), Some(Component::Normal(_))) {
-                        result.pop();
-                    } else {
-                        result.push(current);
-                    }
-                }
-            }
-        }
-
-        result
+        let mut path = PathBuf::with_capacity(self.as_os_str().len());
+        join_components(&mut path, self.components());
+        path
     }
 
     /// Prepends the current directory (working directory) if the path is not already absolute.
-    fn ensure_absolute(&self) -> std::io::Result<PathBuf> {
+    fn simplified_absolute(&self) -> std::io::Result<PathBuf> {
         if self.is_absolute() {
-            Ok(self.to_owned())
+            Ok(self.simplify())
         } else {
-            Ok(std::env::current_dir()?.join(self))
+            let mut path = std::env::current_dir()?;
+            path.reserve(path.as_os_str().len() + self.as_os_str().len());
+            join_components(&mut path, self.components());
+            Ok(path)
         }
     }
 }
@@ -97,47 +102,47 @@ mod tests {
     #[test]
     fn pathbuf_only_retains_last_absolute_path() {
         assert_eq!(
-            Path::new(r"\\?\D:\Data\files.txt"),
             [r"\\?\C:\Users\Rust\README.md", r"\\?\D:\Data\files.txt"]
                 .iter()
-                .collect::<PathBuf>()
+                .collect::<PathBuf>(),
+            Path::new(r"\\?\D:\Data\files.txt"),
         );
     }
 
     #[test]
     fn simplify_works() {
         assert_eq!(
-            Path::new(r"\\?\D:\Data\files.txt"),
             Path::new(r"\\?\D:\Data\Nested\..\files.txt").simplify(),
+            Path::new(r"\\?\D:\Data\files.txt"),
         );
 
         assert_eq!(
-            Path::new(r"\\?\D:\files.txt"),
             Path::new(r"\\?\D:\Data\Nested\..\..\files.txt").simplify(),
+            Path::new(r"\\?\D:\files.txt"),
         );
     }
 
     #[test]
     fn simplify_drops_curdir() {
         assert_eq!(
-            Path::new(r"\\?\D:\files.txt"),
             Path::new(r"\\?\D:\.\files.txt").simplify(),
+            Path::new(r"\\?\D:\files.txt"),
         );
     }
 
     #[test]
     fn simplify_retains_parent_at_root() {
         assert_eq!(
-            Path::new(r"\\?\D:\..\files.txt"),
             Path::new(r"\\?\D:\..\files.txt").simplify(),
+            Path::new(r"\\?\D:\..\files.txt"),
         );
     }
 
     #[test]
     fn relative_path_ignores_prefix_differences() {
         assert_eq!(
-            relative_path(Path::new(r"C:\Users"), Path::new(r"\\?\C:\Users\Mick")),
             PathBuf::from("Mick"),
+            relative_path(Path::new(r"C:\Users"), Path::new(r"\\?\C:\Users\Mick")),
         );
     }
 }

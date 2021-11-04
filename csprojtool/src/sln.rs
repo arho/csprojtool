@@ -46,7 +46,7 @@ pub fn sln(options: SlnOptions) {
 
 fn create_solution(sln_path: &Path, projects: impl Iterator<Item = Project>) -> file::SolutionFile {
     let mut root = file::Directory::default();
-    let sln_path = sln_path.ensure_absolute().unwrap().simplify();
+    let sln_path = sln_path.simplified_absolute().unwrap().simplify();
     let sln_dir = sln_path.parent().unwrap();
     debug!("Solution dir {}", sln_dir.display());
 
