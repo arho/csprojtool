@@ -2,6 +2,7 @@ mod file;
 mod types;
 
 use log::debug;
+use log::warn;
 
 use crate::csproj::*;
 use crate::path_extensions::*;
@@ -37,7 +38,15 @@ pub fn sln(options: SlnOptions) {
 
     let projects = parse_projects(&search_path, &glob_matcher, follow_project_references);
 
-    let sln = create_solution(&sln_path, projects.into_iter().map(|(_, p)| p.unwrap()));
+    let sln = create_solution(&sln_path, projects.into_iter().filter_map(|(path, project)| {
+        match project {
+            Ok(project) => Some(project),
+            Err(e) => {
+                warn!("Ignoring project at {} because of parsing failure: {}", &path.display(), e);
+                None
+            }
+        }
+    }));
 
     let file = std::fs::File::create(&sln_path).unwrap();
     let mut writer = std::io::BufWriter::new(file);
