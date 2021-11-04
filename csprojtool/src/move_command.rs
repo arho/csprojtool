@@ -9,6 +9,7 @@ use xmltree::{Element, XMLNode};
 
 use crate::{
     path_extensions::{relative_path, PathExt},
+    utils::{find_dir_csproj, find_git_root},
     xml_extensions::{child_elements, depth_first_visit_nodes, process_tree, transform_xml_file},
 };
 
@@ -122,7 +123,7 @@ impl MoveCommand {
 
         debug!("determined new path to be {}", new_file.display());
 
-        let root = find_root(&old_dir).unwrap().unwrap_or(&cur_dir);
+        let root = find_git_root(&old_dir).unwrap_or(&cur_dir);
 
         debug!("root: {}", root.display());
 
@@ -361,46 +362,4 @@ fn ensure_root_namespace_and_assembly_name(element: &mut xmltree::Element, name:
     }
 
     modified
-}
-
-fn find_root(mut dir: &Path) -> Result<Option<&Path>, std::io::Error> {
-    loop {
-        if dir_contains_git(dir) {
-            return Ok(Some(dir));
-        }
-        dir = match dir.parent() {
-            Some(dir) => dir,
-            None => return Ok(None),
-        }
-    }
-}
-
-fn dir_contains_git(dir: &Path) -> bool {
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let entry = entry.unwrap();
-        if entry_is_git(&entry) {
-            return true;
-        }
-    }
-    false
-}
-
-fn entry_is_git(entry: &std::fs::DirEntry) -> bool {
-    entry.file_type().unwrap().is_dir() && entry.file_name() == ".git"
-}
-
-fn find_dir_csproj(dir: &Path) -> impl Iterator<Item = PathBuf> {
-    std::fs::read_dir(dir).unwrap().filter_map(|entry| {
-        let entry = entry.unwrap();
-        if entry_is_csproj(&entry) {
-            Some(entry.path())
-        } else {
-            None
-        }
-    })
-}
-
-fn entry_is_csproj(entry: &std::fs::DirEntry) -> bool {
-    entry.file_type().unwrap().is_file()
-        && AsRef::<Path>::as_ref(&entry.file_name()).extension() == Some(OsStr::new("csproj"))
 }

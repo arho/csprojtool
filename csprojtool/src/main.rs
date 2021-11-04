@@ -1,14 +1,15 @@
 mod cli;
 mod csproj;
 mod dependency_graph;
+mod list;
 mod list_projects;
 mod move_command;
 mod path_extensions;
 mod post_migration_cleanup;
+mod utils;
 mod xml_extensions;
 pub use dependency_graph::*;
 pub use list_projects::*;
-use path_extensions::PathExt;
 pub use post_migration_cleanup::*;
 mod sln;
 
@@ -21,7 +22,7 @@ fn get_glob_matcher(matches: &clap::ArgMatches) -> globset::GlobMatcher {
 
 fn get_search_path(matches: &clap::ArgMatches) -> PathBuf {
     let search_path = matches.value_of(cli::ARG_SEARCH_PATH).unwrap();
-    Path::new(search_path).simplified_absolute().unwrap()
+    Path::new(search_path).components().collect()
 }
 
 fn main() {
@@ -42,7 +43,8 @@ fn main() {
         post_migration_cleanup(&PostMigrationCleanupOptions {
             search_path: get_search_path(&matches),
             glob_matcher: get_glob_matcher(&matches),
-            follow_project_references: !matches.is_present(cli::ARG_NO_FOLLOW),
+            follow_project_references: !matches
+                .is_present(cli::ARG_DO_NOT_FOLLOW_OUTGOING_PROJECT_REFERENCES),
             clean_app_configs: matches.is_present(cli::ARG_CLEAN_APP_CONFIG),
         });
     }
@@ -51,17 +53,30 @@ fn main() {
         list_projects(&ListProjectsOptions {
             search_path: get_search_path(&matches),
             glob_matcher: get_glob_matcher(&matches),
-            follow_project_references: !matches.is_present(cli::ARG_NO_FOLLOW),
+            follow_project_references: !matches
+                .is_present(cli::ARG_DO_NOT_FOLLOW_OUTGOING_PROJECT_REFERENCES),
             exclude_sdk: matches.is_present(cli::ARG_EXCLUDE_SDK),
         });
     }
 
+    if let Some(matches) = matches.subcommand_matches(cli::CMD_LIST) {
+        list::run(list::Options {
+            search_path: &get_search_path(&matches),
+            follow_incoming_project_references: !matches
+                .is_present(cli::ARG_DO_NOT_FOLLOW_INCOMING_PROJECT_REFERENCES),
+            follow_outgoing_project_references: !matches
+                .is_present(cli::ARG_DO_NOT_FOLLOW_OUTGOING_PROJECT_REFERENCES),
+        });
+    }
+
     if let Some(matches) = matches.subcommand_matches(cli::CMD_SLN) {
-        sln::sln(sln::SlnOptions {
-            sln_path: std::path::PathBuf::from(matches.value_of(cli::ARG_SLN_PATH).unwrap()),
-            search_path: get_search_path(&matches),
-            glob_matcher: get_glob_matcher(&matches),
-            follow_project_references: !matches.is_present(cli::ARG_NO_FOLLOW),
+        sln::sln(sln::Options {
+            sln_path: &std::path::PathBuf::from(matches.value_of(cli::ARG_SLN_PATH).unwrap()),
+            search_path: &get_search_path(&matches),
+            follow_incoming_project_references: !matches
+                .is_present(cli::ARG_DO_NOT_FOLLOW_INCOMING_PROJECT_REFERENCES),
+            follow_outgoing_project_references: !matches
+                .is_present(cli::ARG_DO_NOT_FOLLOW_OUTGOING_PROJECT_REFERENCES),
         });
     }
 

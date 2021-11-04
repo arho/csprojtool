@@ -17,21 +17,35 @@ pub fn list_projects(options: &ListProjectsOptions) {
         exclude_sdk,
     } = *options;
 
-    let projects = parse_projects(search_path, glob_matcher, follow_project_references);
+    let walk_builder = ignore::WalkBuilder::new(search_path);
+    let cwd = std::env::current_dir().unwrap();
+    walk_builder.build_parallel().run(|| {
+        Box::new(move |entry| {
+            let entry = entry.unwrap();
+            let meta = entry.metadata().unwrap();
+            if meta.is_file() && glob_matcher.is_match(entry.path()) {
+                println!("{}", entry.path().display());
+            }
 
-    let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
-    let mut project_paths = projects
-        .into_iter()
-        .map(|(path, project)| (relative_path(&cwd, path.as_path()), project.unwrap()))
-        .collect::<Vec<_>>();
+            ignore::WalkState::Continue
+        })
+    });
 
-    project_paths.sort_by(|(a, _), (b, _)| a.cmp(b));
+    // let projects = parse_projects(search_path, glob_matcher, follow_project_references);
 
-    for (path, project) in project_paths {
-        if exclude_sdk && project.is_sdk {
-            continue;
-        }
+    // let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
+    // let mut project_paths = projects
+    //     .into_iter()
+    //     .map(|(path, project)| (relative_path(&cwd, path.as_path()), project.unwrap()))
+    //     .collect::<Vec<_>>();
 
-        println!("{}", path.display())
-    }
+    // project_paths.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    // for (path, project) in project_paths {
+    //     if exclude_sdk && project.is_sdk {
+    //         continue;
+    //     }
+
+    //     println!("{}", path.display())
+    // }
 }

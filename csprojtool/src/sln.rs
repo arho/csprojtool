@@ -7,46 +7,32 @@ use log::warn;
 use crate::csproj::*;
 use crate::path_extensions::*;
 use std::path::Path;
-use std::path::PathBuf;
 
-pub struct SlnOptions {
-    pub sln_path: PathBuf,
-    pub search_path: PathBuf,
-    pub glob_matcher: globset::GlobMatcher,
-    pub follow_project_references: bool,
+#[derive(Debug, Copy, Clone)]
+pub struct Options<'a> {
+    pub sln_path: &'a Path,
+    pub search_path: &'a Path,
+    pub follow_incoming_project_references: bool,
+    pub follow_outgoing_project_references: bool,
 }
 
-pub fn sln(options: SlnOptions) {
-    let SlnOptions {
+pub fn sln(options: Options) {
+    debug!("Generating solution with options {:?}", &options);
+
+    let Options {
         sln_path,
         search_path,
-        glob_matcher,
-        follow_project_references,
+        follow_incoming_project_references,
+        follow_outgoing_project_references,
     } = options;
 
-    debug!(
-        "Generating solution {} starting in {} matching {}{}.",
-        sln_path.display(),
-        search_path.display(),
-        glob_matcher.glob(),
-        if follow_project_references {
-            " while following project references"
-        } else {
-            " without following project references"
-        },
-    );
+    let projects = crate::list::list(crate::list::Options {
+        search_path,
+        follow_incoming_project_references,
+        follow_outgoing_project_references,
+    });
 
-    let projects = parse_projects(&search_path, &glob_matcher, follow_project_references);
-
-    let sln = create_solution(&sln_path, projects.into_iter().filter_map(|(path, project)| {
-        match project {
-            Ok(project) => Some(project),
-            Err(e) => {
-                warn!("Ignoring project at {} because of parsing failure: {}", &path.display(), e);
-                None
-            }
-        }
-    }));
+    let sln = create_solution(&sln_path, projects.into_iter());
 
     let file = std::fs::File::create(&sln_path).unwrap();
     let mut writer = std::io::BufWriter::new(file);
