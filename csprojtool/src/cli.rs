@@ -98,8 +98,7 @@ pub fn build_cli() -> App<'static, 'static> {
                 .about("List all projects and their dependencies")
                 .arg(arg_search)
                 .arg(arg_do_not_follow_outgoing_project_references)
-                .arg(arg_do_not_follow_incoming_project_references)
-                .arg(exclude_sdk),
+                .arg(arg_do_not_follow_incoming_project_references),
             clap::SubCommand::with_name(CMD_SLN)
                 .about("Generate a solution file")
                 .arg(
@@ -109,9 +108,8 @@ pub fn build_cli() -> App<'static, 'static> {
                         .help("Path to the solution file"),
                 )
                 .arg(arg_search)
-                .arg(arg_glob)
                 .arg(arg_do_not_follow_outgoing_project_references)
-                .arg(exclude_sdk),
+                .arg(arg_do_not_follow_incoming_project_references),
             crate::move_command::MoveCommand::subcommand(),
         ])
 }
