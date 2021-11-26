@@ -10,7 +10,6 @@ use crate::utils::entry_is_csproj;
 use crate::utils::find_git_root;
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Options<'a> {
@@ -67,8 +66,6 @@ pub fn list(options: Options) -> Vec<Project> {
 
     drop(visitor_builder);
 
-    let rel_search_path = relative_path(&current_dir, &search_path);
-
     let projects = receiver
         .into_iter()
         .flat_map(|projects| projects)
@@ -79,6 +76,8 @@ pub fn list(options: Options) -> Vec<Project> {
         .enumerate()
         .map(|(index, project)| (project.path.to_owned(), index))
         .collect::<BTreeMap<_, _>>();
+
+    let rel_search_path = relative_path(&current_dir, &search_path);
 
     let mut included = projects
         .iter()
