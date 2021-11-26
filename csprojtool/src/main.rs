@@ -2,14 +2,12 @@ mod cli;
 mod csproj;
 mod dependency_graph;
 mod list;
-mod list_projects;
 mod move_command;
 mod path_extensions;
 mod post_migration_cleanup;
 mod utils;
 mod xml_extensions;
 pub use dependency_graph::*;
-pub use list_projects::*;
 pub use post_migration_cleanup::*;
 mod sln;
 
@@ -46,16 +44,6 @@ fn main() {
             follow_project_references: !matches
                 .is_present(cli::ARG_DO_NOT_FOLLOW_OUTGOING_PROJECT_REFERENCES),
             clean_app_configs: matches.is_present(cli::ARG_CLEAN_APP_CONFIG),
-        });
-    }
-
-    if let Some(matches) = matches.subcommand_matches(cli::CMD_LIST_PROJECTS) {
-        list_projects(&ListProjectsOptions {
-            search_path: get_search_path(&matches),
-            glob_matcher: get_glob_matcher(&matches),
-            follow_project_references: !matches
-                .is_present(cli::ARG_DO_NOT_FOLLOW_OUTGOING_PROJECT_REFERENCES),
-            exclude_sdk: matches.is_present(cli::ARG_EXCLUDE_SDK),
         });
     }
 

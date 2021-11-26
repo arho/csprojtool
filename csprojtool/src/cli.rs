@@ -88,12 +88,6 @@ pub fn build_cli() -> App<'static, 'static> {
                 .arg(arg_glob)
                 .arg(arg_do_not_follow_outgoing_project_references)
                 .arg(arg_clean_app_config),
-            clap::SubCommand::with_name(CMD_LIST_PROJECTS)
-                .about("List all projects and their dependencies")
-                .arg(arg_search)
-                .arg(arg_glob)
-                .arg(arg_do_not_follow_outgoing_project_references)
-                .arg(exclude_sdk),
             clap::SubCommand::with_name(CMD_LIST)
                 .about("List all projects and their dependencies")
                 .arg(arg_search)
