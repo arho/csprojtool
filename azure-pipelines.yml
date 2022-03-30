@@ -20,13 +20,13 @@ strategy:
 
 pool:
   vmImage: $(imageName)
- 
-
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    echo $IMAGENAME $RUSTUP_TOOLCHAIN
+  condition: ne( variables['Agent.OS'], 'Windows_NT' )
+  displayName: 'Non-Windows script'
+
+- script: |
+    echo $IMAGENAME $RUSTUP_TOOLCHAIN
+  condition: eq( variables['Agent.OS'], 'Windows_NT' )
+  displayName: 'Windows script'
