@@ -9,6 +9,16 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
+#strategy:
+#    matrix:
+#       Python35:
+#        PYTHON_VERSION: '3.5'
+#      Python36:
+#        PYTHON_VERSION: '3.6'
+#      Python37:
+#        PYTHON_VERSION: '3.7'
+#    maxParallel: 2
+
 steps:
 - script: echo Hello, world!
   displayName: 'Run a one-line script'
