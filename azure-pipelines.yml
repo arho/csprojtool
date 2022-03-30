@@ -9,25 +9,34 @@ trigger:
 strategy:
   matrix:
     windows-stable:
-      imageName: 'vs2017-win2016'
+      imageName: 'windows-latest'
       rustup_toolchain: stable
     mac-stable:
-      imageName: 'macos-10.13'
+      imageName: 'macOS-latest'
       rustup_toolchain: stable
     linux-stable:
-      imageName: 'ubuntu-16.04'
+      imageName: 'ubuntu-20.04'
       rustup_toolchain: stable 
 
 pool:
     vmImage: $(imageName)
 
 steps:
-- script: |
-    echo $IMAGENAME $RUSTUP_TOOLCHAIN
+  - script: |
+      echo $IMAGENAME $RUSTUP_TOOLCHAIN
+      curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUSTUP_TOOLCHAIN
+      echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
     condition: ne( variables['Agent.OS'], 'Windows_NT' )
     displayName: 'Non-Windows script'
 
-- script: |
-    echo %IMAGENAME% %RUSTUP_TOOLCHAIN%
+  - script: |
+      echo %IMAGENAME% %RUSTUP_TOOLCHAIN%
+      curl -sSf -o rustup-init.exe https://win.rustup.rs
+      rustup-init.exe -y --default-toolchain %RUSTUP_TOOLCHAIN%
+      echo "##vso[task.setvariable variable=PATH;]%PATH%;%USERPROFILE%\.cargo\bin"
     condition: eq( variables['Agent.OS'], 'Windows_NT' )
-  displayName: 'Windows script'
+    displayName: 'Windows script'
+  - script: cargo build --all
+    displayName: Cargo build
+  - script: cargo test --all
+    displayName: Cargo test
